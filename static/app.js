@@ -22,6 +22,9 @@
   var chip = toolbar.querySelector("[data-clear-tag]");
   var chipName = toolbar.querySelector("[data-active-tag]");
   var counter = document.querySelector("[data-count]");
+  // The masthead carries a static count for visitors without JavaScript. Once
+  // the live one is running it says the same thing twice, so it steps aside.
+  var staticCount = document.querySelector(".index-count");
   var empty = document.querySelector("[data-empty]");
   var reset = document.querySelector("[data-reset]");
   var loadMore = document.querySelector("[data-load-more]");
@@ -64,6 +67,7 @@
 
     toolbar.hidden = false;
     if (counter) counter.hidden = false;
+    if (staticCount) staticCount.hidden = true;
 
     search.addEventListener("input", debounce(function () {
       query = search.value.trim().toLowerCase();
