@@ -19,6 +19,12 @@ from ssg.posts import format_date
 
 TAGS = ("digest", "news")
 MIN_USABLE_STORIES = 3
+# How many times to ask before settling for a list of links. An answer that
+# comes back unusable is usually unusable by chance -- the model was cut off, or
+# wandered out of JSON -- and the same prompt at temperature asked twice rarely
+# fails the same way twice. Transport failures are not retried here; the HTTP
+# client has already done that by the time it raises.
+ATTEMPTS = 3
 DESCRIPTION_LIMIT = 200
 
 SYSTEM = (
@@ -49,13 +55,14 @@ def build(
     llm: LLM | None = None,
     min_stories: int = 5,
     max_stories: int = 10,
+    attempts: int = ATTEMPTS,
     on_error: Callable[[str], None] = print,
 ) -> str:
     """Return the Markdown file for *day*, falling back to links if need be."""
     if not entries:
         raise DigestError("no entries to write about")
 
-    if llm is not None:
+    for attempt in range(1, attempts + 1) if llm is not None else ():
         try:
             intro, stories = write(
                 llm,
@@ -66,8 +73,12 @@ def build(
                 on_note=on_error,
             )
             return render(day, intro, stories)
-        except (LLMError, DigestError) as error:
+        except LLMError as error:
+            # The model could not be reached. Asking again would only wait longer.
             on_error(f"writing links only: {error}")
+            break
+        except DigestError as error:
+            on_error(f"attempt {attempt} of {attempts} came back unusable: {error}")
 
     return render_links(day, entries[:max_stories])
 

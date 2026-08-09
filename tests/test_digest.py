@@ -75,6 +75,63 @@ def answer(*indices, intro="A quiet day."):
     )
 
 
+class FlakyLLM:
+    """Answers differently each call, so a retry can be told from a repeat."""
+
+    name = "flaky"
+
+    def __init__(self, *answers):
+        self.answers = list(answers)
+        self.calls = 0
+
+    def generate(self, prompt, *, system=""):
+        self.calls += 1
+        answer = self.answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+
+def test_an_unusable_answer_is_asked_for_again():
+    model = FlakyLLM("I would rather not.", answer(1, 2, 3))
+
+    document = digest.build(DAY, ENTRIES, llm=model, on_error=lambda _: None)
+
+    assert model.calls == 2
+    assert "summaries could not be generated" not in document
+    assert "Headline 1" in document
+
+
+def test_it_stops_asking_after_the_last_attempt():
+    model = FlakyLLM(*["I would rather not."] * digest.ATTEMPTS)
+
+    document = digest.build(DAY, ENTRIES, llm=model, on_error=lambda _: None)
+
+    assert model.calls == digest.ATTEMPTS
+    assert "summaries could not be generated" in document
+
+
+def test_an_unreachable_model_is_not_asked_again():
+    # The HTTP client already exhausted its own retries before raising, so
+    # asking again here would only multiply the wait.
+    model = FlakyLLM(LLMError("503"), answer(1, 2, 3))
+
+    document = digest.build(DAY, ENTRIES, llm=model, on_error=lambda _: None)
+
+    assert model.calls == 1
+    assert "summaries could not be generated" in document
+
+
+def test_every_attempt_says_which_one_it_was():
+    problems = []
+    digest.build(
+        DAY, ENTRIES, llm=FlakyLLM(*["nope"] * digest.ATTEMPTS), on_error=problems.append
+    )
+
+    assert len(problems) == digest.ATTEMPTS
+    assert "1" in problems[0] and "nope" in problems[0]
+
+
 def cut_short(*indices, intro="A quiet day."):
     """A pretty-printed answer that stops partway through its last story.
 

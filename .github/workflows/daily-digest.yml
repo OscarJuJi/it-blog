@@ -43,6 +43,99 @@ jobs:
           git push
           echo "published=true" >> "$GITHUB_OUTPUT"
 
+  # Deliberately a job of its own rather than a step in `write`. The agent
+  # already degrades to a list of links instead of failing, which is why four
+  # bad days went unnoticed in August -- so this has to be able to go red
+  # without taking the deploy down with it.
+  check:
+    needs: write
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # `write` may have just pushed. Checking out the caller's SHA would
+          # inspect the tree from before that commit -- the same trap that made
+          # the 2026-08-02 deploy publish nothing.
+          ref: main
+
+      - name: Look for digests that published without summaries
+        id: look
+        run: |
+          read today yesterday < <(python3 - <<'PY'
+          import datetime as dt, tomllib, zoneinfo
+          with open("config.toml", "rb") as handle:
+              name = tomllib.load(handle)["site"].get("timezone", "UTC")
+          try:
+              zone = zoneinfo.ZoneInfo(name)
+          except Exception:
+              zone = dt.timezone.utc
+          today = dt.datetime.now(dt.timezone.utc).astimezone(zone).date()
+          print(today.isoformat(), (today - dt.timedelta(days=1)).isoformat())
+          PY
+          )
+
+          problems=""
+          note() { problems="${problems}- $1"$'\n'; }
+
+          inspect() {
+            local day="$1" label="$2" post="content/posts/$1-daily-digest.md"
+            if [ ! -f "$post" ]; then
+              note "**$day** ($label): no digest exists. That day's run never published one."
+            elif grep -q "summaries could not be generated" "$post"; then
+              note "**$day** ($label): published as a list of links. Every one of the model's answers came back unusable."
+            fi
+          }
+
+          inspect "$today" "today"
+          inspect "$yesterday" "the day before"
+
+          if [ -n "$problems" ]; then
+            echo "$problems"
+          else
+            echo "both digests carry summaries"
+          fi
+
+          {
+            echo "problems<<PROBLEMS_EOF"
+            printf '%s' "$problems"
+            echo
+            echo "PROBLEMS_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Say so, loudly
+        if: steps.look.outputs.problems != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROBLEMS: ${{ steps.look.outputs.problems }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Daily digest published without summaries"
+          body="$PROBLEMS
+          The agent falls back to a list of links when the model's answer cannot be
+          used, and it does that quietly -- the run still goes green. Check the
+          \`Write the digest\` step of [this run]($RUN_URL) for the reason. Look for
+          \`attempt N of 3 came back unusable\`, \`generation stopped early\`, or
+          \`the answer arrived truncated\`.
+
+          Regenerating a *past* day with \`--force\` is not a repair: the feed window
+          is 26 hours, so it would file today's stories under that day's date."
+
+          # One running issue rather than a new one every morning.
+          existing=$(gh issue list --state open --search "$title in:title" \
+            --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
+
+          echo "::error::$title"
+          exit 1
+
   deploy:
     needs: write
     if: needs.write.outputs.published == 'true'
