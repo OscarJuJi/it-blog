@@ -19,6 +19,14 @@ OLLAMA_HOST = "http://localhost:11434"
 
 RETRIES = 3
 RETRY_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
+# A published digest runs to roughly 1400 tokens of visible text, so 4096 looks
+# generous -- but on 2026-08-06 and 2026-08-08 the answer still arrived cut off
+# mid-array, on days whose input was identical to days that worked. The budget
+# is shared with whatever reasoning the model does before it answers, and that
+# varies run to run. Doubling it buys room for the thinking, not for the digest.
+# Kept deliberately modest: a value above what the model accepts would be a 400,
+# and `_post` does not retry those, which would break every day instead of some.
+MAX_OUTPUT_TOKENS = 8192
 # Ways of saying "it finished because it was done", lowercased.
 NORMAL_STOPS = frozenset({"completed", "complete", "stop", "end_turn", "finished"})
 
@@ -43,7 +51,7 @@ class Gemini:
         *,
         endpoint: str = GEMINI_ENDPOINT,
         timeout: int = 90,
-        max_output_tokens: int = 4096,
+        max_output_tokens: int = MAX_OUTPUT_TOKENS,
         temperature: float = 0.4,
         on_note: Callable[[str], None] | None = None,
     ):

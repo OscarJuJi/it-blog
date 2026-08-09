@@ -127,6 +127,29 @@ def test_sends_the_key_the_model_and_the_system_instruction(monkeypatch):
     assert body["system_instruction"] == "be brief"
 
 
+def test_the_request_carries_the_token_budget_it_was_given(monkeypatch):
+    urlopen = responder({"output_text": "ok"})
+    monkeypatch.setattr("urllib.request.urlopen", urlopen)
+
+    llm.Gemini("m", "key", max_output_tokens=1234).generate("hi")
+
+    config = json.loads(urlopen.calls[0].data)["generation_config"]
+    assert config["max_output_tokens"] == 1234
+
+
+def test_the_default_budget_leaves_room_for_a_ten_story_digest(monkeypatch):
+    urlopen = responder({"output_text": "ok"})
+    monkeypatch.setattr("urllib.request.urlopen", urlopen)
+
+    llm.Gemini("m", "key").generate("hi")
+
+    config = json.loads(urlopen.calls[0].data)["generation_config"]
+    assert config["max_output_tokens"] == llm.MAX_OUTPUT_TOKENS
+    # The published digests run to ~1400 tokens of visible text. Anything close
+    # to that leaves nothing for reasoning, which is what truncated 2026-08-06.
+    assert llm.MAX_OUTPUT_TOKENS >= 8192
+
+
 def test_retries_a_rate_limit_and_then_succeeds(monkeypatch):
     urlopen = responder(http_error(429), {"output_text": "second time lucky"})
     monkeypatch.setattr("urllib.request.urlopen", urlopen)
