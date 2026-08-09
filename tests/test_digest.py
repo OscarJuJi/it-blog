@@ -75,6 +75,62 @@ def answer(*indices, intro="A quiet day."):
     )
 
 
+def cut_short(*indices, intro="A quiet day."):
+    """A pretty-printed answer that stops partway through its last story.
+
+    This is the shape that reached production: the model stopped mid-array, and
+    what survived ended at the closing brace of the last story it finished.
+    """
+    full = json.dumps(
+        {
+            "intro": intro,
+            "stories": [
+                {
+                    "index": index,
+                    "headline": f"Headline {index}",
+                    "summary": f"Summary of story {index}.",
+                }
+                for index in indices
+            ],
+        },
+        indent=2,
+    )
+    return full[: full.rindex('"summary"')]
+
+
+def test_a_truncated_answer_still_publishes_the_stories_that_arrived():
+    document = digest.build(
+        DAY, ENTRIES, llm=FakeLLM(cut_short(1, 2, 3, 4)), on_error=lambda _: None
+    )
+
+    assert "summaries could not be generated" not in document
+    assert document.count("## [") == 3
+    assert "Headline 4" not in document
+
+
+def test_a_truncated_answer_that_arrived_too_short_still_falls_back():
+    document = digest.build(
+        DAY, ENTRIES, llm=FakeLLM(cut_short(1, 2)), on_error=lambda _: None
+    )
+    assert "summaries could not be generated" in document
+
+
+def test_salvaging_a_truncated_answer_says_so():
+    problems = []
+    digest.build(DAY, ENTRIES, llm=FakeLLM(cut_short(1, 2, 3, 4)), on_error=problems.append)
+
+    assert problems and "truncated" in problems[0]
+
+
+def test_the_error_repeats_what_the_model_actually_answered():
+    problems = []
+    digest.build(
+        DAY, ENTRIES, llm=FakeLLM('{"stories": [oh no]}'), on_error=problems.append
+    )
+
+    assert problems and "oh no" in problems[0]
+
+
 def test_the_post_it_writes_is_a_post_the_generator_can_load(tmp_path):
     document = digest.build(DAY, ENTRIES, llm=FakeLLM(answer(1, 2, 3)))
 

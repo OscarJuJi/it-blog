@@ -58,7 +58,12 @@ def build(
     if llm is not None:
         try:
             intro, stories = write(
-                llm, entries, day=day, min_stories=min_stories, max_stories=max_stories
+                llm,
+                entries,
+                day=day,
+                min_stories=min_stories,
+                max_stories=max_stories,
+                on_note=on_error,
             )
             return render(day, intro, stories)
         except (LLMError, DigestError) as error:
@@ -74,13 +79,14 @@ def write(
     day: dt.date,
     min_stories: int,
     max_stories: int,
+    on_note: Callable[[str], None] = lambda _: None,
 ) -> tuple[str, list[Story]]:
     """Ask the model to choose and summarize, and check what comes back."""
     answer = llm.generate(
         prompt(entries, day=day, min_stories=min_stories, max_stories=max_stories),
         system=SYSTEM,
     )
-    payload = _json(answer)
+    payload = _json(answer, on_note=on_note)
 
     intro = str(payload.get("intro", "")).strip()
     stories = _stories(payload.get("stories"), entries, limit=max_stories)
@@ -215,18 +221,68 @@ def _stories(raw: object, entries: Sequence[Entry], *, limit: int) -> list[Story
     return stories
 
 
-def _json(answer: str) -> dict:
-    """Read the JSON out of an answer that may be wrapped in prose or fences."""
+def _json(
+    answer: str, *, on_note: Callable[[str], None] = lambda _: None
+) -> dict:
+    """Read the JSON out of an answer that may be wrapped, fenced, or cut short.
+
+    A model that stops mid-array leaves a block ending at the last story it
+    finished -- valid up to that point, and missing only its closing brackets.
+    Rather than lose the whole digest over the story that never arrived, close
+    the brackets and keep what did.
+    """
     match = _JSON_BLOCK.search(answer)
     if match is None:
         raise DigestError(f"no JSON in the answer: {answer[:200]!r}")
+
+    block = match.group(0)
     try:
-        payload = json.loads(match.group(0))
+        payload = json.loads(block)
     except json.JSONDecodeError as error:
-        raise DigestError(f"the answer is not valid JSON: {error}") from error
+        closed = _close(block)
+        try:
+            payload = json.loads(closed)
+        except json.JSONDecodeError:
+            raise DigestError(
+                f"the answer is not valid JSON: {error}: {answer[:400]!r}"
+            ) from error
+        on_note(
+            f"the answer arrived truncated at {len(block)} characters; "
+            "salvaging the stories that did arrive"
+        )
+
     if not isinstance(payload, dict):
         raise DigestError("the answer is not a JSON object")
     return payload
+
+
+def _close(block: str) -> str:
+    """Add the brackets an answer that stopped early never got to write.
+
+    Returns *block* untouched when the cut landed inside a string, where there
+    is nothing safe to guess.
+    """
+    stack: list[str] = []
+    in_string = escaped = False
+
+    for char in block:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+        elif char == '"':
+            in_string = True
+        elif char in "{[":
+            stack.append("}" if char == "{" else "]")
+        elif char in "}]" and stack:
+            stack.pop()
+
+    if in_string:
+        return block
+    return block + "".join(reversed(stack))
 
 
 def _link(text: str, url: str) -> str:

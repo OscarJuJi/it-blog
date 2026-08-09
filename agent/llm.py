@@ -12,13 +12,15 @@ import os
 import time
 import urllib.error
 import urllib.request
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions"
 OLLAMA_HOST = "http://localhost:11434"
 
 RETRIES = 3
 RETRY_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
+# Ways of saying "it finished because it was done", lowercased.
+NORMAL_STOPS = frozenset({"completed", "complete", "stop", "end_turn", "finished"})
 
 
 class LLMError(RuntimeError):
@@ -43,6 +45,7 @@ class Gemini:
         timeout: int = 90,
         max_output_tokens: int = 4096,
         temperature: float = 0.4,
+        on_note: Callable[[str], None] | None = None,
     ):
         if not api_key:
             raise LLMError("no Gemini API key; set GEMINI_API_KEY")
@@ -53,6 +56,7 @@ class Gemini:
         self._timeout = timeout
         self._max_output_tokens = max_output_tokens
         self._temperature = temperature
+        self._note = on_note or (lambda _: None)
 
     def generate(self, prompt: str, *, system: str = "") -> str:
         body: dict[str, Any] = {
@@ -72,9 +76,17 @@ class Gemini:
             headers={"x-goog-api-key": self._key},
             timeout=self._timeout,
         )
+        reason = _stop_reason(payload)
         text = _gemini_text(payload)
         if not text:
-            raise LLMError(f"Gemini returned no text: {json.dumps(payload)[:400]}")
+            why = f" ({reason})" if reason else ""
+            raise LLMError(
+                f"Gemini returned no text{why}: {json.dumps(payload)[:400]}"
+            )
+        # An answer can be cut off and still carry usable text, so hand it back
+        # either way -- but say so, because a caller parsing it deserves to know.
+        if reason:
+            self._note(f"generation stopped early: {reason}")
         return text
 
 
@@ -113,16 +125,42 @@ class Ollama:
 
 
 def from_environment(
-    *, backend: str = "auto", model: str = "", ollama_model: str = "qwen3:8b"
+    *,
+    backend: str = "auto",
+    model: str = "",
+    ollama_model: str = "qwen3:8b",
+    on_note: Callable[[str], None] | None = None,
 ) -> LLM:
     """Pick a backend: an explicit one, or whichever the environment can serve."""
     key = os.environ.get("GEMINI_API_KEY", "").strip()
 
     if backend == "gemini" or (backend == "auto" and key):
-        return Gemini(model, key)
+        return Gemini(model, key, on_note=on_note)
     if backend in ("ollama", "auto"):
         return Ollama(ollama_model)
     raise LLMError(f"unknown backend: {backend!r}")
+
+
+def _stop_reason(payload: dict[str, Any]) -> str:
+    """Why generation ended, when the answer bothers to say and it is not "done".
+
+    The field moved around between API shapes, so look everywhere it has been
+    seen. An empty string means nothing worth reporting.
+    """
+    details = payload.get("incomplete_details")
+    if isinstance(details, dict) and details.get("reason"):
+        return str(details["reason"])
+
+    for candidate in payload.get("candidates") or []:
+        reason = candidate.get("finishReason") or candidate.get("finish_reason")
+        if reason and str(reason).lower() not in NORMAL_STOPS:
+            return str(reason)
+
+    status = payload.get("status")
+    if status and str(status).lower() not in NORMAL_STOPS:
+        return str(status)
+
+    return ""
 
 
 def _gemini_text(payload: dict[str, Any]) -> str:

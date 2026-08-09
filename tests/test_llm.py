@@ -67,6 +67,52 @@ def test_an_answer_with_no_text_is_an_error(monkeypatch):
         llm.Gemini("m", "key").generate("hi")
 
 
+def test_an_answer_cut_short_is_reported_but_still_returned(monkeypatch):
+    payload = {
+        "status": "incomplete",
+        "incomplete_details": {"reason": "max_output_tokens"},
+        "steps": [{"content": [{"type": "text", "text": "half an ans"}]}],
+    }
+    monkeypatch.setattr("urllib.request.urlopen", responder(payload))
+    notes = []
+
+    text = llm.Gemini("m", "key", on_note=notes.append).generate("hi")
+
+    assert text == "half an ans"
+    assert notes and "max_output_tokens" in notes[0]
+
+
+def test_the_legacy_finish_reason_is_reported_too(monkeypatch):
+    payload = {"candidates": [{"finishReason": "MAX_TOKENS", "content": {"parts": [{"text": "x"}]}}]}
+    monkeypatch.setattr("urllib.request.urlopen", responder(payload))
+    notes = []
+
+    llm.Gemini("m", "key", on_note=notes.append).generate("hi")
+
+    assert notes and "MAX_TOKENS" in notes[0]
+
+
+def test_a_normal_answer_is_reported_as_nothing(monkeypatch):
+    payload = {
+        "status": "completed",
+        "steps": [{"content": [{"type": "text", "text": "all of it"}]}],
+    }
+    monkeypatch.setattr("urllib.request.urlopen", responder(payload))
+    notes = []
+
+    llm.Gemini("m", "key", on_note=notes.append).generate("hi")
+
+    assert notes == []
+
+
+def test_an_answer_with_no_text_says_why_it_stopped(monkeypatch):
+    payload = {"status": "incomplete", "incomplete_details": {"reason": "safety"}, "steps": []}
+    monkeypatch.setattr("urllib.request.urlopen", responder(payload))
+
+    with pytest.raises(llm.LLMError, match="safety"):
+        llm.Gemini("m", "key").generate("hi")
+
+
 def test_sends_the_key_the_model_and_the_system_instruction(monkeypatch):
     urlopen = responder({"output_text": "ok"})
     monkeypatch.setattr("urllib.request.urlopen", urlopen)

@@ -83,6 +83,7 @@ def _model(args: argparse.Namespace, settings: dict[str, Any]) -> LLM | None:
             backend=args.llm,
             model=settings.get("model", ""),
             ollama_model=args.ollama_model,
+            on_note=_warn,
         )
     except LLMError as error:
         _warn(f"no model available ({error}); the digest will be links only")
