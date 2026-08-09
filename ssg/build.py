@@ -11,8 +11,9 @@ import shutil
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Sequence
+from urllib.parse import quote_plus
 
-from ssg import feed, markdown, sitemap
+from ssg import feed, markdown, postindex, sitemap
 from ssg.posts import Post, load_all
 from ssg.render import Templates, escape
 from ssg.site import ROOT, Site, load_config
@@ -55,13 +56,22 @@ def build(
         "admin_url": site.path("admin/"),
         "author": site.author,
         "year": now.year,
+        # The sidebar is the same on every page, so it rides in the chrome and
+        # reaches the index, every post and the 404 without further wiring.
+        "sidebar": _sidebar(site, templates, all_posts),
+        "script_url": site.path("app.js"),
+        "posts_url": site.path(postindex.POSTS_PATH),
     }
 
     _write(output / "index.html", _index(site, templates, chrome, all_posts))
     for post in all_posts:
-        _write(output / post.path / "index.html", _post(site, templates, chrome, post))
+        _write(
+            output / post.path / "index.html",
+            _post(site, templates, chrome, post, all_posts),
+        )
     _write(output / "404.html", _not_found(site, templates, chrome))
 
+    _write(output / postindex.POSTS_PATH, postindex.build(site, all_posts))
     _write(output / feed.FEED_PATH, feed.build(site, all_posts, built_at=now))
     _write(output / sitemap.SITEMAP_PATH, sitemap.build(site, all_posts))
     _write(output / MARKER, "")
@@ -76,6 +86,7 @@ def _index(site: Site, templates: Templates, chrome: dict, all_posts: Sequence[P
                 "post_item.html",
                 {
                     "url": site.path(post.path),
+                    "slug": post.slug,
                     "title": post.title,
                     "iso_date": post.date.isoformat(),
                     "display_date": post.display_date,
@@ -88,7 +99,9 @@ def _index(site: Site, templates: Templates, chrome: dict, all_posts: Sequence[P
     else:
         items = '<p class="empty">Nothing published yet.</p>'
 
-    content = templates.render("index.html", {"posts": items})
+    content = templates.render(
+        "index.html", {"posts": items, "post_count": len(all_posts)}
+    )
     return _page(
         templates,
         chrome,
@@ -99,7 +112,13 @@ def _index(site: Site, templates: Templates, chrome: dict, all_posts: Sequence[P
     )
 
 
-def _post(site: Site, templates: Templates, chrome: dict, post: Post) -> str:
+def _post(
+    site: Site,
+    templates: Templates,
+    chrome: dict,
+    post: Post,
+    all_posts: Sequence[Post],
+) -> str:
     content = templates.render(
         "post.html",
         {
@@ -109,6 +128,7 @@ def _post(site: Site, templates: Templates, chrome: dict, post: Post) -> str:
             "tags": _tags(post.tags),
             "body": markdown.to_html(post.body),
             "home_url": chrome["home_url"],
+            "post_nav": _post_nav(site, templates, all_posts, post),
         },
     )
     return _page(
@@ -135,6 +155,115 @@ def _not_found(site: Site, templates: Templates, chrome: dict) -> str:
 
 def _page(templates: Templates, chrome: dict, **page: object) -> str:
     return templates.render("base.html", {**chrome, **page})
+
+
+def _sidebar(site: Site, templates: Templates, posts: Sequence[Post]) -> str:
+    """The widgets, built once and carried by the chrome onto every page."""
+    counts = _tag_counts(posts)
+    if counts:
+        frequencies = [count for _, count in counts]
+        smallest, largest = min(frequencies), max(frequencies)
+        cloud = "\n".join(
+            templates.render(
+                "tag_item.html",
+                {
+                    "tag": tag,
+                    "count": count,
+                    "step": _cloud_step(count, smallest=smallest, largest=largest),
+                    # Built here, never in JavaScript, so the base_url prefix
+                    # survives and the link still means something without JS.
+                    "url": f"{site.path()}?tag={quote_plus(tag)}",
+                },
+            )
+            for tag, count in counts
+        )
+    else:
+        cloud = '      <li class="empty">No tags yet.</li>'
+
+    recent = _recent(posts)
+    if recent:
+        items = "\n".join(
+            templates.render(
+                "recent_item.html",
+                {
+                    "url": site.path(post.path),
+                    "title": post.title,
+                    "iso_date": post.date.isoformat(),
+                    "display_date": post.display_date,
+                },
+            )
+            for post in recent
+        )
+    else:
+        items = '      <li class="empty">Nothing published yet.</li>'
+
+    return templates.render(
+        "sidebar.html", {"tag_cloud": cloud, "recent_items": items}
+    )
+
+
+def _post_nav(
+    site: Site, templates: Templates, posts: Sequence[Post], post: Post
+) -> str:
+    """Links to the neighbouring posts, or nothing at all when there are none.
+
+    The templates cannot express "only if there is one", so the absent side
+    simply contributes an empty string here.
+    """
+    newer, older = _neighbours(posts, post)
+    links = [
+        templates.render(name, {"url": site.path(other.path), "title": other.title})
+        for name, other in (("nav_newer.html", newer), ("nav_older.html", older))
+        if other is not None
+    ]
+    if not links:
+        return ""
+    return '<nav class="post-nav" aria-label="More posts">\n' + "\n".join(links) + "\n</nav>"
+
+
+def _tag_counts(posts: Sequence[Post]) -> list[tuple[str, int]]:
+    """Every distinct tag with how often it appears, alphabetically.
+
+    Alphabetical rather than by frequency so that two builds of the same
+    content produce byte-identical pages; the cloud conveys frequency through
+    size, not through position.
+    """
+    counts: dict[str, int] = {}
+    for post in posts:
+        for tag in post.tags:
+            counts[tag] = counts.get(tag, 0) + 1
+    return sorted(counts.items())
+
+
+def _cloud_step(count: int, *, smallest: int, largest: int) -> int:
+    """Place *count* on a 1-5 scale between the rarest and commonest tag.
+
+    Tags tie constantly on a blog this size -- for a long while every post
+    carried exactly ``digest`` and ``news`` -- so the flat case is the normal
+    one, not an edge case. It gets the middle step, and no division happens.
+    """
+    if largest <= smallest:
+        return 3
+    span = largest - smallest
+    return 1 + round(4 * (count - smallest) / span)
+
+
+def _recent(posts: Sequence[Post], limit: int = 5) -> list[Post]:
+    """The newest few. ``load_all`` already sorts, so this only trims."""
+    return list(posts[:limit])
+
+
+def _neighbours(posts: Sequence[Post], post: Post) -> tuple[Post | None, Post | None]:
+    """The posts either side of *post* as (newer, older).
+
+    *posts* is newest first, so the newer one sits at the lower index. Either
+    end of the list gives ``None``, which is how the templates end up with an
+    empty string instead of a conditional they cannot express.
+    """
+    index = list(posts).index(post)
+    newer = posts[index - 1] if index > 0 else None
+    older = posts[index + 1] if index + 1 < len(posts) else None
+    return newer, older
 
 
 def _tags(tags: Sequence[str]) -> str:

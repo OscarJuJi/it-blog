@@ -68,8 +68,32 @@ nothing new to commit.
 The build runs the test suite before it renders anything. A broken post or a
 broken parser fails the deploy instead of publishing a broken page.
 
+## Search and filtering, without a server
+
+The front page can search and filter by tag, which on a static host normally
+means either a server or shipping a search library. It does neither.
+
+`ssg/postindex.py` writes `posts.json` beside the feed and the sitemap: one
+record per post, with the URL **already carrying the `/ti-blog` prefix**.
+`static/app.js` fetches it and decides which of the post cards to show.
+
+The part worth stating plainly is what the script does *not* do: it never builds
+markup. Every card is already in `index.html`, rendered by the same templates as
+always; the script only toggles `hidden`. That means there is no second copy of
+the card markup to keep in sync, nothing to escape on the client, and the page
+without JavaScript is not a fallback that had to be built and tested separately
+— it is this same page with no filter applied. If the fetch fails, nothing
+changes and the controls stay hidden, so a visitor never meets a dead button.
+
+The matching rule follows from it: the script consumes URLs, never constructs
+them. `?tag=` links come from Python, so the prefix survives; a hand-joined path
+would quietly drop it.
+
 ## What was left out
 
-No tags pages, no pagination, no search, no analytics, no comments. Each is easy
-to add to a generator this size once there is a reason to; none of them earns its
-place on a blog with one author and a daily digest.
+No generated `/tags/<tag>/` pages, no pagination, no analytics, no comments.
+Tag filtering happens in the browser, which means a shared `?tag=digest` link
+works for a visitor with JavaScript and shows the unfiltered index for one
+without — never a broken state, but not a crawlable page either. Real tag pages
+are the fix when that matters. Pagination becomes worth it somewhere north of a
+few hundred posts, since every card is rendered server-side today.

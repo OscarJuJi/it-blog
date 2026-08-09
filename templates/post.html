@@ -6,6 +6,8 @@
   </header>
 
 {{ body | safe }}
-
-  <p class="back"><a href="{{ home_url }}">&larr; All posts</a></p>
 </article>
+
+{{ post_nav | safe }}
+
+<p class="back"><a href="{{ home_url }}">&larr; All posts</a></p>

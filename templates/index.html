@@ -1,3 +1,26 @@
-<div class="post-list">
+<div class="index-head">
+  <h1 class="index-title">Latest</h1>
+  <p class="index-count">{{ post_count }} entries</p>
+</div>
+
+<!-- Everything below stays hidden until app.js proves it works. A visitor
+     without JavaScript never sees a control that would do nothing. -->
+<div class="toolbar" data-toolbar hidden>
+  <div class="field">
+    <label for="q">Search these posts</label>
+    <input type="search" id="q" data-search placeholder="title, summary or tag" autocomplete="off">
+  </div>
+  <button type="button" class="chip" data-clear-tag hidden>
+    Tag: <b data-active-tag></b> <span aria-hidden="true">&times;</span>
+  </button>
+</div>
+
+<p class="result-count" data-count role="status" aria-live="polite" hidden></p>
+
+<div class="post-list" data-posts-list>
 {{ posts | safe }}
 </div>
+
+<p class="no-matches" data-empty hidden>Nothing matches that. <button type="button" class="linkish" data-reset>Show everything</button></p>
+
+<button type="button" class="load-more" data-load-more hidden></button>
