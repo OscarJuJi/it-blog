@@ -52,4 +52,12 @@ collections:
           default: false,
           hint: Keep this out of the published site until unticked.,
         }
-      - { name: body, label: Body, widget: markdown }
+      # Raw only. The rich-text editor re-serialises whatever it loads, which is
+      # how 2026-08-02 came back with _dev.to_ where the agent had written
+      # *dev.to* -- a change no reader could see and every parser could trip on.
+      # Editing the Markdown directly leaves the file as it was written.
+      #
+      # `modes` is documented for Decap's markdown widget, whose config Sveltia
+      # reproduces; Sveltia's own docs page for the widget was not reachable, so
+      # confirm the toolbar really opens in raw mode the next time you edit a post.
+      - { name: body, label: Body, widget: markdown, modes: [raw] }

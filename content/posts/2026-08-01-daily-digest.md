@@ -21,6 +21,8 @@ A tutorial details building a JavaScript command bot using Peggy and Zod that co
 
 ## [MkLinux and the pimped-out Apple Workgroup Server 9150](http://oldvcr.blogspot.com/2026/08/mklinux-and-pimped-out-apple-workgroup.html)
 
+A restoration writeup rebuilds an Apple Workgroup Server 9150, the odd member of Apple's mid-1990s server line, and fits it with more RAM, a faster CPU and new video cards so it can run both classic Mac OS and MkLinux. The piece traces why Apple entered the server market at all, how the Workgroup Servers related to A/UX, and how that line ended after the 68K-to-PowerPC transition left Apple offering Linux on the Mach microkernel instead. Mostly computing history, but a useful reminder that running Linux on a microkernel was once a shipping product rather than a thought experiment.
+
 *Hacker News*
 
 ## [Pixel 11 specs and price leak with no surprises](https://www.theverge.com/tech/974238/pixel-11-specs-and-price-leak)
