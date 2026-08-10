@@ -4,7 +4,9 @@ date: 2026-08-07
 description: "Today's engineering news focuses on AI integration within incident management and automated codebase refactoring, platform distribution risks, and backend infrastructure challenges."
 tags:
   - digest
-  - news
+  - ai
+  - devtools
+  - mobile
 ---
 
 Today's engineering news focuses on AI integration within incident management and automated codebase refactoring, platform distribution risks, and backend infrastructure challenges.

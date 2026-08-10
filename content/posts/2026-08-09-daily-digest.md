@@ -4,7 +4,9 @@ date: 2026-08-09
 description: "Today's highlights focus on automated infrastructure recovery, AI agent tooling safety, supply chain security defaults, and performance engineering at scale."
 tags:
   - digest
-  - news
+  - ai
+  - security
+  - databases
 ---
 
 Today's highlights focus on automated infrastructure recovery, AI agent tooling safety, supply chain security defaults, and performance engineering at scale.

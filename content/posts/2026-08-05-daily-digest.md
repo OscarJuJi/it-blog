@@ -4,7 +4,9 @@ date: 2026-08-05
 description: "Today's engineering digest covers security challenges in autonomous AI agents, JIT compiler optimizations, distributed ad architectures, and runtime memory efficiency."
 tags:
   - digest
-  - news
+  - ai
+  - security
+  - performance
 ---
 
 Today's engineering digest covers security challenges in autonomous AI agents, JIT compiler optimizations, distributed ad architectures, and runtime memory efficiency.
