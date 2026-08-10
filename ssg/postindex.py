@@ -38,5 +38,6 @@ def _entry(site: Site, post: Post) -> dict:
         "date": post.date.isoformat(),
         "display_date": post.display_date,
         "summary": post.summary,
+        "reading_time": post.reading_time,
         "tags": list(post.tags),
     }

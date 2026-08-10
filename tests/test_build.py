@@ -126,6 +126,15 @@ def test_a_tag_gets_a_page_of_its_own(site_dir):
             assert post.title not in page
 
 
+def test_a_tag_with_one_post_says_entry_not_entries(site_dir):
+    # The templates cannot branch, so the whole label is built in Python -- and
+    # the template must not append the noun itself.
+    page = read(site_dir / "tags" / "python" / "index.html")
+
+    assert '<p class="index-count">1 entry</p>' in page
+    assert "entry entries" not in page
+
+
 def test_a_tag_page_leaves_the_script_asleep(site_dir):
     # app.js starts only when both hooks are present. If it woke up here its
     # click handler would preventDefault the sidebar chips and they would stop

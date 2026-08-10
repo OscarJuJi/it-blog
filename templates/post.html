@@ -1,12 +1,15 @@
 <article class="post">
   <header class="post-header">
     <time datetime="{{ iso_date }}">{{ display_date }}</time>
+    <span class="reading-time">{{ reading_time }} min read</span>
     <h1>{{ title }}</h1>
     {{ tags | safe }}
   </header>
 
 {{ body | safe }}
 </article>
+
+{{ related | safe }}
 
 {{ post_nav | safe }}
 

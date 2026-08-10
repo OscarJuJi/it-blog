@@ -415,6 +415,23 @@ main:focus { outline: none; }
 
 .back { margin-top: var(--gap); font-family: var(--sans); font-weight: 700; }
 
+.reading-time {
+  margin-left: 0.75rem;
+  font: var(--step--1) var(--mono);
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.related {
+  margin-top: var(--gap);
+  background: var(--surface);
+  border: var(--border-w) solid var(--rule);
+  box-shadow: var(--shadow);
+  padding: 1.1rem;
+}
+.related .widget-title { margin: -1.1rem -1.1rem 1rem; }
+
 /* ---------- sidebar ---------- */
 
 .widget {

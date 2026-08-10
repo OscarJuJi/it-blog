@@ -1,4 +1,4 @@
-"""The build: content and templates in, a deployable ``_site/`` out.
+﻿"""The build: content and templates in, a deployable ``_site/`` out.
 
 Run it with ``python -m ssg.build`` (add ``--serve`` to preview the result).
 """
@@ -89,6 +89,11 @@ def build(
     return all_posts
 
 
+def _count_label(total: int) -> str:
+    """"1 entry" or "7 entries". The templates cannot branch, so this does."""
+    return "1 entry" if total == 1 else f"{total} entries"
+
+
 def _cards(site: Site, templates: Templates, posts: Sequence[Post]) -> str:
     """The list of post cards, shared by the index and every tag page."""
     if not posts:
@@ -113,7 +118,7 @@ def _cards(site: Site, templates: Templates, posts: Sequence[Post]) -> str:
 def _index(site: Site, templates: Templates, chrome: dict, all_posts: Sequence[Post]) -> str:
     content = templates.render(
         "index.html",
-        {"posts": _cards(site, templates, all_posts), "post_count": len(all_posts)},
+        {"posts": _cards(site, templates, all_posts), "post_count": _count_label(len(all_posts))},
     )
     return _page(
         templates,
@@ -136,7 +141,7 @@ def _tag_page(
         "tag.html",
         {
             "tag": tag,
-            "post_count": len(tagged),
+            "post_count": _count_label(len(tagged)),
             "posts": _cards(site, templates, tagged),
             "home_url": chrome["home_url"],
         },
@@ -167,6 +172,8 @@ def _post(
             "tags": _tags(post.tags),
             "body": markdown.to_html(post.body),
             "home_url": chrome["home_url"],
+            "reading_time": post.reading_time,
+            "related": _related_html(site, templates, all_posts, post),
             "post_nav": _post_nav(site, templates, all_posts, post),
         },
     )
@@ -242,6 +249,28 @@ def _sidebar(site: Site, templates: Templates, posts: Sequence[Post]) -> str:
     )
 
 
+def _related_html(
+    site: Site, templates: Templates, posts: Sequence[Post], post: Post
+) -> str:
+    """The related list, or nothing at all when nothing genuinely relates."""
+    related = _related(posts, post)
+    if not related:
+        return ""
+    items = "\n".join(
+        templates.render(
+            "recent_item.html",
+            {
+                "url": site.path(other.path),
+                "title": other.title,
+                "iso_date": other.date.isoformat(),
+                "display_date": other.display_date,
+            },
+        )
+        for other in related
+    )
+    return templates.render("related.html", {"items": items})
+
+
 def _post_nav(
     site: Site, templates: Templates, posts: Sequence[Post], post: Post
 ) -> str:
@@ -291,6 +320,34 @@ def _cloud_step(count: int, *, smallest: int, largest: int) -> int:
 def _recent(posts: Sequence[Post], limit: int = 5) -> list[Post]:
     """The newest few. ``load_all`` already sorts, so this only trims."""
     return list(posts[:limit])
+
+
+def _related(posts: Sequence[Post], post: Post, limit: int = 3) -> list[Post]:
+    """Other posts sharing a tag with *post*, most in common first.
+
+    A tag carried by nearly every post says nothing about any of them. `digest`
+    is on all of them, so counting it would score every pair alike and let
+    "related" degrade into "the newest posts", which the prev/next strip and the
+    recent widget already show. The threshold is deliberately high rather than a
+    simple majority: a genuine topic can sit on most of a week's digests without
+    becoming meaningless.
+    """
+    if len(posts) < 2:
+        return []
+
+    ubiquitous = 0.8 * len(posts)
+    common = {tag for tag, count in _tag_counts(posts) if count >= ubiquitous}
+    wanted = set(post.tags) - common
+    if not wanted:
+        return []
+
+    scored = [
+        (len(wanted & set(other.tags)), other.date, other)
+        for other in posts
+        if other.slug != post.slug and wanted & set(other.tags)
+    ]
+    scored.sort(key=lambda row: (row[0], row[1]), reverse=True)
+    return [other for _, _, other in scored[:limit]]
 
 
 def _neighbours(posts: Sequence[Post], post: Post) -> tuple[Post | None, Post | None]:

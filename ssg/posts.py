@@ -22,6 +22,10 @@ class PostError(ValueError):
     """Raised when a post file cannot be turned into a :class:`Post`."""
 
 
+# The `](...)` half of a Markdown link, in both the bare and <angled> forms.
+_LINK_TARGET = re.compile(r"\]\(\s*(?:<[^>]*>|[^()\s]*)\s*\)")
+
+
 @dataclass(frozen=True)
 class Post:
     """One post, ready to render."""
@@ -33,6 +37,18 @@ class Post:
     tags: tuple[str, ...]
     body: str
     source: Path
+    draft: bool = False
+
+    @property
+    def reading_time(self) -> int:
+        """Minutes, rounded, never less than one.
+
+        Link targets are stripped before counting. A digest is mostly URLs, and
+        counting them as words would advertise a twenty-minute read for a page
+        anyone skims in two.
+        """
+        prose = _LINK_TARGET.sub(" ", self.body)
+        return max(1, round(len(prose.split()) / 200))
 
     @property
     def path(self) -> str:
@@ -82,11 +98,28 @@ def load(path: Path) -> Post:
         tags=_tags(metadata.get("tags")),
         body=body,
         source=path,
+        draft=_flag(metadata.get("draft")),
     )
 
 
-def load_all(directory: Path) -> list[Post]:
-    """Read every post in *directory*, newest first."""
+def _flag(value: object) -> bool:
+    """Read a front matter boolean.
+
+    The parser has no types -- everything arrives as a string -- so `draft: false`
+    comes through as the string "false", and plain truthiness would hide a post
+    its author had explicitly marked as ready. Only the recognised ways of
+    writing yes count.
+    """
+    return str(value or "").strip().lower() in {"true", "yes", "on", "1"}
+
+
+def load_all(directory: Path, *, include_drafts: bool = False) -> list[Post]:
+    """Read every post in *directory*, newest first.
+
+    Drafts are filtered here rather than in the build so that the feed, the
+    sitemap, the JSON index, the tag pages and the prev/next links all agree
+    about what exists without each having to remember to ask.
+    """
     posts = [load(path) for path in sorted(Path(directory).glob("*.md"))]
 
     seen: dict[str, Path] = {}
@@ -96,6 +129,11 @@ def load_all(directory: Path) -> list[Post]:
                 f"{post.source.name}: slug {post.slug!r} is already used by {seen[post.slug].name}"
             )
         seen[post.slug] = post.source
+
+    # The collision check above runs over drafts too: a draft owns its filename,
+    # and a clash should surface now rather than on the day it is published.
+    if not include_drafts:
+        posts = [post for post in posts if not post.draft]
 
     posts.sort(key=lambda post: (post.date, post.slug), reverse=True)
     return posts

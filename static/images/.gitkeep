@@ -1,0 +1,6 @@
+This folder is where the CMS uploads images.
+
+It is committed empty on purpose: `static/admin/config.yml` points `media_folder`
+here, git will not track an empty directory, and `build.py` copies all of
+`static/` into the output — so without this file the folder would not exist and
+an upload would have nowhere to land.

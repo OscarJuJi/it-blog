@@ -1,7 +1,7 @@
 import datetime as dt
 from pathlib import Path
 
-from ssg.build import _cloud_step, _neighbours, _recent, _tag_counts
+from ssg.build import _cloud_step, _neighbours, _recent, _related, _tag_counts
 from ssg.posts import Post
 
 
@@ -85,3 +85,54 @@ def test_a_lone_post_has_neither():
     only = [post("only", 1)]
 
     assert _neighbours(only, only[0]) == (None, None)
+
+
+def test_a_tag_almost_everything_carries_relates_nothing():
+    # `digest` is on every agent post. Counting it would make "related" mean
+    # "the newest posts", which the neighbours strip and the recent widget
+    # already show.
+    universal = [post(f"p{d}", d, "digest") for d in range(1, 6)]
+
+    assert _related(universal, universal[0]) == []
+
+
+def test_posts_are_related_by_the_tags_they_actually_share():
+    library = [
+        post("a", 5, "digest", "security"),
+        post("b", 4, "digest", "security"),
+        post("c", 3, "digest", "web"),
+        post("d", 2, "digest"),
+    ]
+
+    related = _related(library, library[0])
+
+    assert [p.slug for p in related] == ["b"]
+
+
+def test_more_shared_tags_wins_over_being_newer():
+    library = [
+        post("subject", 5, "digest", "ai", "security"),
+        post("newer-weak", 4, "digest", "ai"),
+        post("older-strong", 1, "digest", "ai", "security"),
+        post("filler-a", 3, "digest", "web"),
+        post("filler-b", 2, "digest", "web"),
+    ]
+
+    related = _related(library, library[0])
+
+    # digest is on all five and is ignored; ai and security still discriminate.
+    assert [p.slug for p in related] == ["older-strong", "newer-weak"]
+
+
+def test_a_post_is_never_related_to_itself():
+    library = [post("a", 2, "x", "y"), post("b", 1, "x", "y")]
+
+    assert library[0] not in _related(library, library[0])
+
+
+def test_related_respects_its_limit():
+    library = [post(f"ai{d}", d, "ai") for d in range(1, 7)]
+    library += [post("other-a", 7, "web"), post("other-b", 8, "web")]
+
+    # ai is on six of eight -- common, but not ubiquitous enough to ignore.
+    assert len(_related(library, library[0], limit=2)) == 2

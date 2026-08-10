@@ -40,4 +40,16 @@ collections:
           hint: One or two sentences, shown on the front page and in the feed.,
         }
       - { name: tags, label: Tags, widget: list, required: false }
+      # Kept out of the build while ticked. `posts._flag` reads it, treating
+      # only true/yes/on/1 as yes: the front matter parser has no types, so
+      # `draft: false` arrives as a non-empty string and plain truthiness would
+      # hide a post its author had marked ready.
+      - {
+          name: draft,
+          label: Draft,
+          widget: boolean,
+          required: false,
+          default: false,
+          hint: Keep this out of the published site until unticked.,
+        }
       - { name: body, label: Body, widget: markdown }
