@@ -1,0 +1,68 @@
+name: Repair posts
+
+# Run by hand only. This edits posts that are already published, so it defaults
+# to a dry run and you have to ask for the write explicitly.
+on:
+  workflow_dispatch:
+    inputs:
+      retag:
+        description: Give old digests real topics
+        type: boolean
+        default: true
+      refill:
+        description: Summarise the links-only digests from the articles they link to
+        type: boolean
+        default: false
+      apply:
+        description: Actually write and commit (leave off for a dry run)
+        type: boolean
+        default: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Repair
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          args=""
+          [ "${{ inputs.retag }}" = "true" ] && args="$args --retag"
+          [ "${{ inputs.refill }}" = "true" ] && args="$args --refill"
+          [ "${{ inputs.apply }}" = "true" ] || args="$args --dry-run"
+          [ -n "$args" ] || { echo "nothing selected"; exit 1; }
+          python scripts/repair_posts.py $args
+
+      - name: Show the diff
+        run: git --no-pager diff --stat
+
+      - name: Commit
+        if: ${{ inputs.apply }}
+        run: |
+          if [ -z "$(git status --porcelain content/posts)" ]; then
+            echo "nothing changed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add content/posts
+          git commit -m "Repair published digests
+
+          Retagged and/or refilled by scripts/repair_posts.py. Summaries come
+          from the articles each post already linked to, not from a fresh feed
+          read: the collection window is 26 hours, so re-running the feeds for
+          an old date would file today's news under it."
+          git push
