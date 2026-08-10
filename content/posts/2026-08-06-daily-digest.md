@@ -5,8 +5,8 @@ description: "Today's tech news highlights trade secret legal battles, platform 
 tags:
   - digest
   - ai
-  - data
   - cloud
+  - policy
 ---
 
 Today's tech news highlights trade secret legal battles, platform engineering patterns, data center political scrutiny, and software architectures for embedded systems and AI integrations.

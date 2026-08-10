@@ -4,7 +4,9 @@ date: 2026-08-04
 description: "Today's engineering news highlights AI integration quirks and real-time streaming tools alongside breaking changes in web build ecosystems and distributed system design choices."
 tags:
   - digest
-  - news
+  - ai
+  - devtools
+  - security
 ---
 
 Today's engineering news highlights AI integration quirks and real-time streaming tools alongside breaking changes in web build ecosystems and distributed system design choices.

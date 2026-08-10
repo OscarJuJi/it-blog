@@ -4,7 +4,9 @@ date: 2026-08-02
 description: "Today's updates cover developments in distributed consensus, proof-oriented programming, and cross-platform hardware APIs alongside operational insights into AI ethics, satellite recovery, and regulatory compliance."
 tags:
   - digest
-  - news
+  - ai
+  - mobile
+  - programming-languages
 ---
 
 Today's updates cover developments in distributed consensus, proof-oriented programming, and cross-platform hardware APIs alongside operational insights into AI ethics, satellite recovery, and regulatory compliance.

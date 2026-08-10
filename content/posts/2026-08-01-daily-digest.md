@@ -4,7 +4,9 @@ date: 2026-08-01
 description: "Today's digest highlights cloud sandbox tools, safety guardrails in parser design and generative AI, satellite system recovery, and shifts in developer hardware and culture."
 tags:
   - digest
-  - news
+  - ai
+  - cloud
+  - hardware
 ---
 
 Today's digest highlights cloud sandbox tools, safety guardrails in parser design and generative AI, satellite system recovery, and shifts in developer hardware and culture.

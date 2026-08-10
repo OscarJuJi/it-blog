@@ -4,7 +4,9 @@ date: 2026-08-03
 description: "Today's updates highlight major developments in language compilers, distributed consensus algorithms, and AI code migration tooling."
 tags:
   - digest
-  - news
+  - ai
+  - devtools
+  - programming-languages
 ---
 
 Today's updates highlight major developments in language compilers, distributed consensus algorithms, and AI code migration tooling.
