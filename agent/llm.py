@@ -210,7 +210,10 @@ def _post(
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as error:
-            detail = error.read().decode("utf-8", "replace")[:300]
+            # Generous: a 429 says which quota ran out and when it resets, and
+            # that is the whole diagnosis. Cutting at 300 characters truncated
+            # the message exactly before the metric name.
+            detail = error.read().decode("utf-8", "replace")[:900]
             last = LLMError(f"HTTP {error.code} from {url}: {detail}")
             if error.code not in RETRY_STATUSES:
                 raise last from error
