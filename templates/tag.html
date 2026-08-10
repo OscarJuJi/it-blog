@@ -1,0 +1,14 @@
+<div class="index-head">
+  <h1 class="index-title">{{ tag }}</h1>
+  <p class="index-count">{{ post_count }} entries</p>
+</div>
+
+<!-- No search hooks here, on purpose. app.js starts only when it finds both of
+     the ones the index carries; on a tag page it must stay asleep, or its click
+     handler would stop the sidebar chips from navigating. A test asserts their
+     absence, so do not name them even in a comment. -->
+<div class="post-list">
+{{ posts | safe }}
+</div>
+
+<p class="back"><a href="{{ home_url }}">&larr; All posts</a></p>

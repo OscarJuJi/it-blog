@@ -115,6 +115,55 @@ def test_a_post_links_to_its_neighbours_and_the_ends_only_have_one(site_dir):
     assert 'rel="next"' in oldest and 'rel="prev"' not in oldest
 
 
+def test_a_tag_gets_a_page_of_its_own(site_dir):
+    page = read(site_dir / "tags" / "digest" / "index.html")
+    posts = build_module.load_all(ROOT / "content" / "posts")
+    tagged = [p for p in posts if "digest" in p.tags]
+
+    assert page.count('class="post-item"') == len(tagged)
+    for post in posts:
+        if "digest" not in post.tags:
+            assert post.title not in page
+
+
+def test_a_tag_page_leaves_the_script_asleep(site_dir):
+    # app.js starts only when both hooks are present. If it woke up here its
+    # click handler would preventDefault the sidebar chips and they would stop
+    # navigating -- the one way a tag page can silently break.
+    page = read(site_dir / "tags" / "digest" / "index.html")
+
+    assert "data-toolbar" not in page
+    assert "data-posts-list" not in page
+
+
+def test_tag_pages_are_in_the_sitemap(site_dir):
+    assert "/ti-blog/tags/digest/" in read(site_dir / "sitemap.xml")
+
+
+def test_robots_points_at_the_sitemap_by_absolute_url(site_dir):
+    robots = read(site_dir / "robots.txt")
+
+    assert "User-agent: *" in robots
+    assert "Sitemap: https://oscarjuji.github.io/ti-blog/sitemap.xml" in robots
+
+
+def test_the_social_card_is_absolute_and_actually_exists(site_dir):
+    index = read(site_dir / "index.html")
+
+    assert 'content="https://oscarjuji.github.io/ti-blog/og.png"' in index
+    # A card pointing at a 404 is worse than no card at all.
+    assert (site_dir / "og.png").exists()
+
+
+def test_a_post_declares_itself_an_article_and_the_index_a_website(site_dir):
+    posts = build_module.load_all(ROOT / "content" / "posts")
+
+    assert '<meta property="og:type" content="website">' in read(site_dir / "index.html")
+    assert '<meta property="og:type" content="article">' in read(
+        site_dir / posts[0].path / "index.html"
+    )
+
+
 def test_internal_links_carry_the_project_prefix(site_dir):
     page = read(site_dir / "posts" / "2026-08-01-how-this-blog-works" / "index.html")
 

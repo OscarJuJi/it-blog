@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Sequence
 from urllib.parse import quote_plus
 
-from ssg import feed, markdown, postindex, sitemap
+from ssg import feed, markdown, postindex, robots, sitemap, tags
 from ssg.posts import Post, load_all
 from ssg.render import Templates, escape
 from ssg.site import ROOT, Site, load_config
@@ -61,6 +61,10 @@ def build(
         "sidebar": _sidebar(site, templates, all_posts),
         "script_url": site.path("app.js"),
         "posts_url": site.path(postindex.POSTS_PATH),
+        "og_image": site.absolute("og.png"),
+        # A chrome default that post pages deliberately shadow via _page's
+        # {**chrome, **page} merge.
+        "og_type": "website",
     }
 
     _write(output / "index.html", _index(site, templates, chrome, all_posts))
@@ -69,8 +73,14 @@ def build(
             output / post.path / "index.html",
             _post(site, templates, chrome, post, all_posts),
         )
+    for _, tag, tagged in tags.index(all_posts):
+        _write(
+            output / tags.path(tag) / "index.html",
+            _tag_page(site, templates, chrome, tag, tagged),
+        )
     _write(output / "404.html", _not_found(site, templates, chrome))
 
+    _write(output / robots.ROBOTS_PATH, robots.build(site))
     _write(output / postindex.POSTS_PATH, postindex.build(site, all_posts))
     _write(output / feed.FEED_PATH, feed.build(site, all_posts, built_at=now))
     _write(output / sitemap.SITEMAP_PATH, sitemap.build(site, all_posts))
@@ -79,28 +89,31 @@ def build(
     return all_posts
 
 
-def _index(site: Site, templates: Templates, chrome: dict, all_posts: Sequence[Post]) -> str:
-    if all_posts:
-        items = "\n".join(
-            templates.render(
-                "post_item.html",
-                {
-                    "url": site.path(post.path),
-                    "slug": post.slug,
-                    "title": post.title,
-                    "iso_date": post.date.isoformat(),
-                    "display_date": post.display_date,
-                    "summary": post.summary,
-                    "tags": _tags(post.tags),
-                },
-            )
-            for post in all_posts
+def _cards(site: Site, templates: Templates, posts: Sequence[Post]) -> str:
+    """The list of post cards, shared by the index and every tag page."""
+    if not posts:
+        return '<p class="empty">Nothing published yet.</p>'
+    return "\n".join(
+        templates.render(
+            "post_item.html",
+            {
+                "url": site.path(post.path),
+                "slug": post.slug,
+                "title": post.title,
+                "iso_date": post.date.isoformat(),
+                "display_date": post.display_date,
+                "summary": post.summary,
+                "tags": _tags(post.tags),
+            },
         )
-    else:
-        items = '<p class="empty">Nothing published yet.</p>'
+        for post in posts
+    )
 
+
+def _index(site: Site, templates: Templates, chrome: dict, all_posts: Sequence[Post]) -> str:
     content = templates.render(
-        "index.html", {"posts": items, "post_count": len(all_posts)}
+        "index.html",
+        {"posts": _cards(site, templates, all_posts), "post_count": len(all_posts)},
     )
     return _page(
         templates,
@@ -109,6 +122,32 @@ def _index(site: Site, templates: Templates, chrome: dict, all_posts: Sequence[P
         page_title=site.title,
         description=site.description,
         canonical=site.absolute(),
+    )
+
+
+def _tag_page(
+    site: Site,
+    templates: Templates,
+    chrome: dict,
+    tag: str,
+    tagged: Sequence[Post],
+) -> str:
+    content = templates.render(
+        "tag.html",
+        {
+            "tag": tag,
+            "post_count": len(tagged),
+            "posts": _cards(site, templates, tagged),
+            "home_url": chrome["home_url"],
+        },
+    )
+    return _page(
+        templates,
+        chrome,
+        content=content,
+        page_title=f"{tag} - {site.title}",
+        description=f"Posts tagged {tag} on {site.title}.",
+        canonical=site.absolute(tags.path(tag)),
     )
 
 
@@ -135,6 +174,7 @@ def _post(
         templates,
         chrome,
         content=content,
+        og_type="article",
         page_title=f"{post.title} - {site.title}",
         description=post.summary,
         canonical=site.absolute(post.path),
@@ -266,10 +306,11 @@ def _neighbours(posts: Sequence[Post], post: Post) -> tuple[Post | None, Post | 
     return newer, older
 
 
-def _tags(tags: Sequence[str]) -> str:
-    if not tags:
+def _tags(values: Sequence[str]) -> str:
+    # Parameter is not called `tags`: that would shadow the ssg.tags module.
+    if not values:
         return ""
-    items = "".join(f"<li>{escape(tag)}</li>" for tag in tags)
+    items = "".join(f"<li>{escape(value)}</li>" for value in values)
     return f'<ul class="tags">{items}</ul>'
 
 

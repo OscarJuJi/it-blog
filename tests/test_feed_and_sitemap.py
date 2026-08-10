@@ -88,6 +88,9 @@ def test_sitemap_lists_the_home_page_and_every_post():
         "https://oscarjuji.github.io/ti-blog/",
         "https://oscarjuji.github.io/ti-blog/posts/daily-digest/",
         "https://oscarjuji.github.io/ti-blog/posts/older-note/",
+        # POSTS[0] carries digest and news; POSTS[1] is untagged.
+        "https://oscarjuji.github.io/ti-blog/tags/digest/",
+        "https://oscarjuji.github.io/ti-blog/tags/news/",
     ]
 
 

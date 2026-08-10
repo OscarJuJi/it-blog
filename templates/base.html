@@ -9,10 +9,14 @@
 <link rel="alternate" type="application/rss+xml" title="{{ site_title }}" href="{{ feed_url }}">
 <link rel="stylesheet" href="{{ style_url }}">
 <meta name="color-scheme" content="light dark">
-<meta property="og:type" content="website">
+<meta property="og:type" content="{{ og_type }}">
+<meta property="og:site_name" content="{{ site_title }}">
 <meta property="og:title" content="{{ page_title }}">
 <meta property="og:description" content="{{ description }}">
 <meta property="og:url" content="{{ canonical }}">
+<meta property="og:image" content="{{ og_image }}">
+<meta property="og:image:alt" content="{{ site_title }}">
+<meta name="twitter:card" content="summary_large_image">
 </head>
 <body data-posts-url="{{ posts_url }}">
 <a class="skip-link" href="#content">Skip to content</a>
