@@ -23,6 +23,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      committed: ${{ steps.commit.outputs.committed }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -50,12 +52,15 @@ jobs:
         run: git --no-pager diff --stat
 
       - name: Commit
+        id: commit
         if: ${{ inputs.apply }}
         run: |
           if [ -z "$(git status --porcelain content/posts)" ]; then
             echo "nothing changed"
+            echo "committed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          echo "committed=true" >> "$GITHUB_OUTPUT"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add content/posts
@@ -66,3 +71,16 @@ jobs:
           read: the collection window is 26 hours, so re-running the feeds for
           an old date would file today's news under it."
           git push
+
+  # A push made with GITHUB_TOKEN does not trigger `on: push`, so the site would
+  # keep serving the unrepaired posts until something else happened to deploy.
+  # The daily digest calls the deploy for the same reason; this had to as well,
+  # and the first run of it published nothing.
+  deploy:
+    needs: repair
+    if: needs.repair.outputs.committed == 'true'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/build-deploy.yml
