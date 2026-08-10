@@ -12,7 +12,11 @@ from xml.etree import ElementTree
 
 USER_AGENT = "ti-blog-agent/1.0 (+https://github.com/OscarJuJi/ti-blog)"
 TIMEOUT = 20
-SUMMARY_LIMIT = 400
+# Generous, because it costs nothing: only dev.to and InfoQ publish enough text
+# to reach it, and cutting them at 400 was throwing away the one thing the model
+# needed. The feeds that give almost nothing -- Ars at ~77 characters, TechCrunch
+# at ~143 -- are not helped by any limit; `agent/article.py` reads those instead.
+SUMMARY_LIMIT = 1600
 
 ATOM = "{http://www.w3.org/2005/Atom}"
 DUBLIN_CORE = "{http://purl.org/dc/elements/1.1/}"

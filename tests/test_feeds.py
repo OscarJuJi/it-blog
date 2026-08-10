@@ -67,7 +67,9 @@ def test_html_is_taken_out_of_summaries():
 
 
 def test_long_summaries_are_cut():
-    payload = RSS.replace("Plain text summary.", "word " * 200)
+    # Comfortably past SUMMARY_LIMIT whatever it is set to, so raising the limit
+    # does not quietly stop this from testing the truncation at all.
+    payload = RSS.replace("Plain text summary.", "word " * (feeds.SUMMARY_LIMIT // 2))
     summary = feeds.parse(payload, source="x")[1].summary
     assert len(summary) <= feeds.SUMMARY_LIMIT + 3
     assert summary.endswith("...")

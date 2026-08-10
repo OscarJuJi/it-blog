@@ -14,7 +14,7 @@ import zoneinfo
 from pathlib import Path
 from typing import Any, Sequence
 
-from agent import digest, feeds, history, rank
+from agent import article, digest, feeds, history, rank
 from agent.llm import LLM, LLMError, from_environment
 from ssg.site import ROOT, load_config
 
@@ -69,6 +69,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not shortlist:
         _warn("nothing published recently enough to write about")
         return 1
+
+    # After the shortlist, so this visits twenty pages rather than a hundred,
+    # and only the ones whose feed said too little to summarise from.
+    if not args.no_fetch:
+        shortlist = article.enrich(
+            shortlist,
+            minimum=settings.get("article_minimum", article.USEFUL),
+            on_note=_warn,
+        )
 
     document = digest.build(
         day,
@@ -143,6 +152,11 @@ def _arguments(argv: Sequence[str] | None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--force", action="store_true", help="overwrite the day's digest if it exists"
+    )
+    parser.add_argument(
+        "--no-fetch",
+        action="store_true",
+        help="do not read the linked articles; use only what the feeds said",
     )
     parser.add_argument("--output-dir", type=Path, default=POSTS)
     return parser.parse_args(argv)
