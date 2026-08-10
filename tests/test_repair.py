@@ -58,6 +58,17 @@ def test_it_reads_back_the_reading_list():
     assert [i.source for i in items] == ["Hacker News", "Ars Technica"]
 
 
+def test_it_reads_a_post_the_cms_has_rewritten():
+    # Sveltia normalises emphasis on save, so a post edited in the browser comes
+    # back with _underscores_ where the agent wrote *asterisks*. 2026-08-02 is
+    # the real post this was found on.
+    cms_style = LINKS_ONLY.replace("*Hacker News*", "_Hacker News_")
+
+    items = repair.reading_list(cms_style)
+
+    assert [i.source for i in items] == ["Hacker News", "Ars Technica"]
+
+
 def test_a_written_digest_has_no_reading_list_to_read():
     assert repair.reading_list(WRITTEN) == []
 

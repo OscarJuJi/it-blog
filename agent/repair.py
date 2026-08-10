@@ -27,9 +27,14 @@ LATE_NOTE = (
 )
 
 # `- [title](url) - *source*`, in both link forms `_link()` emits.
+#
+# The source is matched with either emphasis marker on purpose. The agent writes
+# `*dev.to*`, but a post that has been through the CMS comes back as `_dev.to_`:
+# Sveltia normalises Markdown when it saves. 2026-08-02 is the one post that was
+# ever edited there, and it was the one this failed to read.
 _ITEM = re.compile(
     r"^- \[(?P<title>[^\]]+)\]\(\s*(?:<(?P<angled>[^>]+)>|(?P<bare>[^()\s]+))\s*\)"
-    r"\s*-\s*\*(?P<source>[^*]+)\*\s*$",
+    r"\s*-\s*(?P<mark>[*_])(?P<source>.+?)(?P=mark)\s*$",
     re.MULTILINE,
 )
 _TAGS_BLOCK = re.compile(r"^tags:\n(?:  - .*\n)+", re.MULTILINE)
