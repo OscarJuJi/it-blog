@@ -54,7 +54,13 @@ python scripts/new_post.py "What I learned about CUDA" --tags cuda,notes
 Then edit the file it prints and push it.
 
 The front matter is `title` and `date` (required), plus `description` and `tags`.
-The filename may start with `YYYY-MM-DD-`; the slug is whatever follows it.
+
+The slug is the **whole** filename stem, date prefix included, so
+`2026-08-01-daily-digest.md` is served at `/posts/2026-08-01-daily-digest/`.
+That is deliberate: every digest is called `daily-digest`, and dropping the date
+would make the second one collide with the first. It did, once, in production —
+`tests/test_posts.py::test_a_recurring_post_gets_one_url_per_day` is the
+executable version of this paragraph.
 
 ## The agent
 

@@ -1,4 +1,4 @@
-"""Turning everything the feeds offered into a short, varied shortlist."""
+﻿"""Turning everything the feeds offered into a short, varied shortlist."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ def select(
     seen_titles: set[str] = set()
 
     for entry in fresh_first:
-        link, title = _canonical_link(entry.link), _canonical_title(entry.title)
+        link, title = canonical_link(entry.link), canonical_title(entry.title)
         if link in seen_links or title in seen_titles:
             continue
         seen_links.add(link)
@@ -83,7 +83,7 @@ def _sort_key(entry: Entry) -> dt.datetime:
     return entry.published or dt.datetime.min.replace(tzinfo=dt.timezone.utc)
 
 
-def _canonical_link(link: str) -> str:
+def canonical_link(link: str) -> str:
     parts = urllib.parse.urlsplit(link.strip())
     query = [
         (key, value)
@@ -102,5 +102,5 @@ def _canonical_link(link: str) -> str:
     )
 
 
-def _canonical_title(title: str) -> str:
+def canonical_title(title: str) -> str:
     return _NOISE.sub("", title.lower()).strip()

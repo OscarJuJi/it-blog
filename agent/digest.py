@@ -17,8 +17,11 @@ from agent.feeds import Entry
 from agent.llm import LLM, LLMError
 from ssg.posts import format_date
 
-TAGS = ("digest", "news")
+# Every agent-written post carries this, and nothing else does. It is what lets
+# the history check tell a post the agent wrote from one a human did.
+MARKER_TAG = "digest"
 MIN_USABLE_STORIES = 3
+MAX_TOPICS = 3
 # How many times to ask before settling for a list of links. An answer that
 # comes back unusable is usually unusable by chance -- the model was cut off, or
 # wandered out of JSON -- and the same prompt at temperature asked twice rarely
@@ -55,6 +58,8 @@ def build(
     llm: LLM | None = None,
     min_stories: int = 5,
     max_stories: int = 10,
+    topics: Sequence[str] = (),
+    max_topics: int = MAX_TOPICS,
     attempts: int = ATTEMPTS,
     on_error: Callable[[str], None] = print,
 ) -> str:
@@ -64,15 +69,17 @@ def build(
 
     for attempt in range(1, attempts + 1) if llm is not None else ():
         try:
-            intro, stories = write(
+            intro, stories, chosen = write(
                 llm,
                 entries,
                 day=day,
                 min_stories=min_stories,
                 max_stories=max_stories,
+                topics=topics,
+                max_topics=max_topics,
                 on_note=on_error,
             )
-            return render(day, intro, stories)
+            return render(day, intro, stories, chosen)
         except LLMError as error:
             # The model could not be reached. Asking again would only wait longer.
             on_error(f"writing links only: {error}")
@@ -90,29 +97,56 @@ def write(
     day: dt.date,
     min_stories: int,
     max_stories: int,
+    topics: Sequence[str] = (),
+    max_topics: int = MAX_TOPICS,
     on_note: Callable[[str], None] = lambda _: None,
-) -> tuple[str, list[Story]]:
+) -> tuple[str, list[Story], tuple[str, ...]]:
     """Ask the model to choose and summarize, and check what comes back."""
     answer = llm.generate(
-        prompt(entries, day=day, min_stories=min_stories, max_stories=max_stories),
+        prompt(
+            entries,
+            day=day,
+            min_stories=min_stories,
+            max_stories=max_stories,
+            topics=topics,
+            max_topics=max_topics,
+        ),
         system=SYSTEM,
     )
     payload = _json(answer, on_note=on_note)
 
     intro = str(payload.get("intro", "")).strip()
+    chosen = _topics(
+        payload.get("topics"), allowed=topics, limit=max_topics, on_note=on_note
+    )
     stories = _stories(payload.get("stories"), entries, limit=max_stories)
     # A digest of one or two items is not worth publishing -- unless that is all
     # the configuration ever asked for.
     floor = min(MIN_USABLE_STORIES, max_stories)
     if len(stories) < floor:
         raise DigestError(f"only {len(stories)} usable stories came back")
-    return intro, stories
+    return intro, stories, chosen
 
 
 def prompt(
-    entries: Sequence[Entry], *, day: dt.date, min_stories: int, max_stories: int
+    entries: Sequence[Entry],
+    *,
+    day: dt.date,
+    min_stories: int,
+    max_stories: int,
+    topics: Sequence[str] = (),
+    max_topics: int = MAX_TOPICS,
 ) -> str:
     """The whole instruction, candidates included."""
+    vocabulary = ", ".join(topics)
+    topic_rule = (
+        f"- Tag the digest with 1 to {max_topics} topics describing what it "
+        f"actually covers. Choose only from this list, exactly as spelled: "
+        f"{vocabulary}. If nothing fits, return an empty list.\n"
+        if topics
+        else ""
+    )
+    topic_field = '\n  "topics": ["..."],' if topics else ""
     candidates = "\n\n".join(
         f"[{number}] {entry.title}\n"
         f"    source: {entry.source}\n"
@@ -136,10 +170,10 @@ care. No hype, no filler openings like "In a move that".
 - Rewrite each headline in plain language. Do not copy it word for word if it is \
 clickbait.
 - Do not write any URLs. Refer to a story by its index number.
-
+{topic_rule}
 Answer with JSON and nothing else, in this shape:
 
-{{"intro": "one sentence on the shape of the day, no more",
+{{"intro": "one sentence on the shape of the day, no more",{topic_field}
   "stories": [{{"index": 1, "headline": "...", "summary": "..."}}]}}
 
 The stories:
@@ -148,7 +182,12 @@ The stories:
 """
 
 
-def render(day: dt.date, intro: str, stories: Sequence[Story]) -> str:
+def render(
+    day: dt.date,
+    intro: str,
+    stories: Sequence[Story],
+    topics: Sequence[str] = (),
+) -> str:
     """Assemble the post from the model's words and our own links."""
     sections = "\n\n".join(
         f"## {_link(story.headline, story.entry.link)}\n\n"
@@ -162,6 +201,7 @@ def render(day: dt.date, intro: str, stories: Sequence[Story]) -> str:
         description=intro or _first_headline(stories),
         body=body,
         footer="Selected and summarized automatically from the sources linked above.",
+        topics=topics,
     )
 
 
@@ -182,9 +222,48 @@ def render_links(day: dt.date, entries: Sequence[Entry]) -> str:
     )
 
 
-def _document(day: dt.date, *, description: str, body: str, footer: str) -> str:
+def _topics(
+    raw: object,
+    *,
+    allowed: Sequence[str],
+    limit: int,
+    on_note: Callable[[str], None] = lambda _: None,
+) -> tuple[str, ...]:
+    """The model's topics, kept only where they match the agreed vocabulary.
+
+    A closed vocabulary rather than whatever the model feels like saying: free
+    text invents a near-synonym most days, and a tag that appears once is a tag
+    nobody can browse by. Rejections are reported rather than swallowed -- the
+    log is how you find out which topic the list is missing.
+    """
+    if not isinstance(raw, list):
+        return ()
+
+    permitted = {topic.strip().lower() for topic in allowed}
+    kept: list[str] = []
+    for item in raw:
+        topic = str(item).strip().lower()
+        if not topic or topic in kept or topic == MARKER_TAG:
+            continue
+        if topic not in permitted:
+            on_note(f"ignoring topic outside the vocabulary: {topic!r}")
+            continue
+        kept.append(topic)
+        if len(kept) == limit:
+            break
+    return tuple(kept)
+
+
+def _document(
+    day: dt.date,
+    *,
+    description: str,
+    body: str,
+    footer: str,
+    topics: Sequence[str] = (),
+) -> str:
     title = f"Daily digest: {format_date(day)}"
-    tags = "\n".join(f"  - {tag}" for tag in TAGS)
+    tags = "\n".join(f"  - {tag}" for tag in (MARKER_TAG, *topics))
     return (
         "---\n"
         f"title: {_quote(title)}\n"

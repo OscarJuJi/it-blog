@@ -27,6 +27,37 @@ candidate_limit = 20
 # Bounds on how many stories the digest covers.
 min_stories = 5
 max_stories = 10
+# The tags a digest may carry, beyond the "digest" marker every one of them has.
+# Deliberately a closed list: left to invent its own, the model coins a near
+# synonym most days, and a tag that appears once is a tag nobody can browse by.
+# When the log starts reporting the same rejected topic over and over, that is
+# the signal to add it here -- one line, no code change.
+# Keep every entry lowercase and free of ':' '[' ']' '#' ',' quotes and newlines:
+# the front matter is written by hand and has no escapes. A test enforces this.
+topics = [
+  "ai",
+  "security",
+  "web",
+  "devtools",
+  "databases",
+  "cloud",
+  "hardware",
+  "mobile",
+  "open-source",
+  "programming-languages",
+  "performance",
+  "networking",
+  "data",
+  "policy",
+  "business",
+  "science",
+]
+# At most this many topics on one post, on top of the marker.
+max_topics = 3
+# How far back to look for stories already covered, so a big item does not run
+# two mornings in a row. Two weeks: past that, a story resurfacing is usually
+# genuine new coverage rather than an echo.
+memory_days = 14
 
 [[agent.feeds]]
 name = "Hacker News"

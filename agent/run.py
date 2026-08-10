@@ -14,7 +14,7 @@ import zoneinfo
 from pathlib import Path
 from typing import Any, Sequence
 
-from agent import digest, feeds, rank
+from agent import digest, feeds, history, rank
 from agent.llm import LLM, LLMError, from_environment
 from ssg.site import ROOT, load_config
 
@@ -42,6 +42,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         _warn("every feed failed; leaving today alone")
         return 1
 
+    # Before the ranker, not after: dropping repeats here lets per_feed_limit
+    # refill from the same feed instead of handing the model a short, lopsided
+    # list. The day's own file is excluded, so --force can rewrite it.
+    already = history.seen(
+        args.output_dir,
+        before=day,
+        days=settings.get("memory_days", 14),
+        marker=digest.MARKER_TAG,
+    )
+    entries = history.unseen(
+        entries,
+        already,
+        keep_at_least=settings.get("min_stories", 5),
+        on_note=_warn,
+    )
+
     shortlist = rank.select(
         entries,
         now=now,
@@ -60,6 +76,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         llm=_model(args, settings),
         min_stories=settings.get("min_stories", 5),
         max_stories=settings.get("max_stories", 10),
+        topics=settings.get("topics", []),
+        max_topics=settings.get("max_topics", digest.MAX_TOPICS),
         on_error=_warn,
     )
 

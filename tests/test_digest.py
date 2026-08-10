@@ -59,20 +59,110 @@ class FakeLLM:
         return self.answer
 
 
-def answer(*indices, intro="A quiet day."):
-    return json.dumps(
-        {
-            "intro": intro,
-            "stories": [
-                {
-                    "index": index,
-                    "headline": f"Headline {index}",
-                    "summary": f"Summary of story {index}.",
-                }
-                for index in indices
-            ],
-        }
+def answer(*indices, intro="A quiet day.", topics=None):
+    payload = {
+        "intro": intro,
+        "stories": [
+            {
+                "index": index,
+                "headline": f"Headline {index}",
+                "summary": f"Summary of story {index}.",
+            }
+            for index in indices
+        ],
+    }
+    if topics is not None:
+        payload["topics"] = topics
+    return json.dumps(payload)
+
+
+ALLOWED = ("ai", "security", "web", "databases")
+
+
+def tags_of(document, tmp_path, name="2026-08-01-daily-digest.md"):
+    path = tmp_path / name
+    path.write_text(document, encoding="utf-8")
+    return posts.load(path).tags
+
+
+def test_the_marker_tag_is_always_there_and_comes_first(tmp_path):
+    document = digest.build(
+        DAY,
+        ENTRIES,
+        llm=FakeLLM(answer(1, 2, 3, topics=["security", "ai"])),
+        topics=ALLOWED,
     )
+
+    assert tags_of(document, tmp_path) == (digest.MARKER_TAG, "security", "ai")
+
+
+def test_a_topic_outside_the_vocabulary_is_dropped_and_reported(tmp_path):
+    notes = []
+    document = digest.build(
+        DAY,
+        ENTRIES,
+        llm=FakeLLM(answer(1, 2, 3, topics=["ai", "cryptozoology"])),
+        topics=ALLOWED,
+        on_error=notes.append,
+    )
+
+    assert tags_of(document, tmp_path) == (digest.MARKER_TAG, "ai")
+    assert any("cryptozoology" in note for note in notes)
+
+
+def test_topics_are_capped(tmp_path):
+    document = digest.build(
+        DAY,
+        ENTRIES,
+        llm=FakeLLM(answer(1, 2, 3, topics=["ai", "security", "web", "databases"])),
+        topics=ALLOWED,
+        max_topics=2,
+    )
+
+    assert tags_of(document, tmp_path) == (digest.MARKER_TAG, "ai", "security")
+
+
+def test_duplicates_and_stray_capitals_collapse(tmp_path):
+    document = digest.build(
+        DAY,
+        ENTRIES,
+        llm=FakeLLM(answer(1, 2, 3, topics=["AI", "ai", " Security "])),
+        topics=ALLOWED,
+    )
+
+    assert tags_of(document, tmp_path) == (digest.MARKER_TAG, "ai", "security")
+
+
+def test_an_answer_with_no_topics_still_publishes(tmp_path):
+    document = digest.build(DAY, ENTRIES, llm=FakeLLM(answer(1, 2, 3)), topics=ALLOWED)
+
+    assert tags_of(document, tmp_path) == (digest.MARKER_TAG,)
+
+
+def test_the_links_only_fallback_claims_no_topics(tmp_path):
+    # Nobody classified that day, so saying otherwise would be a lie.
+    document = digest.build(DAY, ENTRIES, llm=None, topics=ALLOWED)
+
+    assert tags_of(document, tmp_path) == (digest.MARKER_TAG,)
+
+
+def test_the_prompt_lists_the_vocabulary_it_will_accept():
+    text = digest.prompt(
+        ENTRIES, day=DAY, min_stories=3, max_stories=5, topics=ALLOWED, max_topics=3
+    )
+
+    for topic in ALLOWED:
+        assert topic in text
+
+
+def test_the_configured_vocabulary_is_safe_in_hand_built_frontmatter():
+    # _document writes YAML by hand and frontmatter.py has no escapes, so a topic
+    # carrying a colon, a leading bracket or a newline would corrupt every post.
+    from ssg.site import load_config
+
+    for topic in load_config().get("agent", {}).get("topics", []):
+        assert topic == topic.strip().lower()
+        assert not any(ch in topic for ch in ':[]{}#,"\'\n')
 
 
 class FlakyLLM:
@@ -197,7 +287,7 @@ def test_the_post_it_writes_is_a_post_the_generator_can_load(tmp_path):
 
     assert post.title == "Daily digest: August 1, 2026"
     assert post.date == DAY
-    assert post.tags == ("digest", "news")
+    assert post.tags == (digest.MARKER_TAG,)
     assert post.description == "A quiet day."
     assert post.slug == "2026-08-01-daily-digest"
 
@@ -259,7 +349,7 @@ def test_falls_back_when_the_answer_is_not_json():
 def test_the_links_only_post_also_loads(tmp_path):
     path = tmp_path / "2026-08-01-daily-digest.md"
     path.write_text(digest.render_links(DAY, ENTRIES), encoding="utf-8")
-    assert posts.load(path).tags == ("digest", "news")
+    assert posts.load(path).tags == (digest.MARKER_TAG,)
 
 
 def test_quotes_in_a_summary_cannot_break_the_front_matter(tmp_path):
