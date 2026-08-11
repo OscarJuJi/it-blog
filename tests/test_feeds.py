@@ -90,6 +90,55 @@ def test_malformed_xml_is_an_error():
         feeds.parse("<rss><channel>", source="x")
 
 
+@pytest.mark.parametrize("url", ["file:///etc/passwd", "ftp://example.com/feed"])
+def test_only_the_web_is_fetched(url, monkeypatch):
+    """`config.toml` is trusted, but a typo there should not read the disk."""
+    def refuse(request, timeout=None):
+        raise AssertionError(f"urlopen was called for {url}")
+
+    monkeypatch.setattr("urllib.request.urlopen", refuse)
+
+    with pytest.raises(feeds.FeedError, match="not an http"):
+        feeds.fetch(url)
+
+
+def test_a_document_declaring_entities_is_refused():
+    """Entity expansion is the one XML attack ElementTree still allows.
+
+    Four nested levels reach ten thousand characters; the same trick with more
+    levels exhausts the runner's memory before `parse` ever returns.
+    """
+    bomb = (
+        '<?xml version="1.0"?>\n'
+        "<!DOCTYPE rss [\n"
+        '  <!ENTITY a "aaaaaaaaaa">\n'
+        '  <!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">\n'
+        "]>\n"
+        "<rss><channel><item><title>&b;</title>"
+        "<link>https://example.com/x</link></item></channel></rss>"
+    )
+
+    with pytest.raises(feeds.FeedError, match="document type declaration"):
+        feeds.parse(bomb, source="hostile")
+
+
+def test_a_feed_that_never_stops_is_cut_off(monkeypatch):
+    """A response with no end is a hang, not a feed."""
+    class Endless:
+        def read(self, size=-1):
+            return b"<" * (size if size and size > 0 else 1024)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda request, timeout=None: Endless())
+
+    assert len(feeds.fetch("https://example.com/feed")) <= feeds.BYTE_LIMIT
+
+
 def test_collect_skips_a_feed_that_is_down(monkeypatch):
     def fetch(url, timeout=None):
         if "broken" in url:

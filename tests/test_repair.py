@@ -3,6 +3,7 @@ import datetime as dt
 import pytest
 
 from agent import repair
+from ssg import frontmatter
 
 LINKS_ONLY = """---
 title: "Daily digest: August 1, 2026"
@@ -137,3 +138,38 @@ def test_refilling_says_the_post_was_written_after_the_fact():
 def test_refilling_refuses_a_post_that_already_has_prose():
     with pytest.raises(repair.RepairError, match="already"):
         repair.refill(WRITTEN, [], {}, intro="x")
+
+
+# The intro is the model's sentence, written from articles nobody here controls,
+# and it goes straight into front matter that has no escape syntax at all. Both
+# tests below round-trip through the real parser rather than reading the string.
+
+
+def test_an_intro_with_quotes_survives_the_front_matter():
+    items = repair.reading_list(LINKS_ONLY)
+
+    out = repair.refill(
+        LINKS_ONLY, items, {0: "A summary."}, intro='The day AI ate "everything"'
+    )
+
+    metadata, _ = frontmatter.split(out)
+    assert "\\" not in metadata["description"]
+    assert "everything" in metadata["description"]
+
+
+def test_an_intro_carrying_a_newline_cannot_break_the_build():
+    items = repair.reading_list(LINKS_ONLY)
+
+    out = repair.refill(
+        LINKS_ONLY,
+        items,
+        {0: "A summary."},
+        intro="Line one\ntags: injected\nmore",
+    )
+
+    metadata, _ = frontmatter.split(out)
+    # The injected line is text inside the description, not a key of its own,
+    # and the post's real tags are untouched.
+    assert metadata["tags"] == frontmatter.split(LINKS_ONLY)[0]["tags"]
+    assert "injected" in metadata["description"]
+    assert "\n" not in metadata["description"]

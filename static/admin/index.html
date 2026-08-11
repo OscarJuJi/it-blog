@@ -9,7 +9,22 @@
   <body>
     <!-- Sveltia CMS finds config.yml next to this file. Sign in with a GitHub
          fine-grained personal access token that can read and write this repo:
-         press "Sign In with Token" on the login screen. -->
-    <script src="https://unpkg.com/@sveltia/cms/dist/sveltia-cms.js"></script>
+         press "Sign In with Token" on the login screen.
+
+         Pinned to an exact version and checked against its hash, because this
+         script is the one that ends up holding that token. Unpinned, the page
+         ran whatever unpkg served that morning; now the browser refuses to run
+         anything whose bytes do not match.
+
+         To upgrade, pick the new version and recompute the hash:
+           curl -s https://unpkg.com/@sveltia/cms@<version>/dist/sveltia-cms.js \
+             | openssl dgst -sha384 -binary | openssl base64 -A
+         Read the release notes first. The point of the pin is that an upgrade
+         is a decision. -->
+    <script
+      src="https://unpkg.com/@sveltia/cms@0.185.0/dist/sveltia-cms.js"
+      integrity="sha384-6O3K+RAXaD1xf2UdIhcCYxYwKiLN3tP5h6YAfevWJ1xBKd7EHNtLebtcd7ig0ZFm"
+      crossorigin="anonymous"
+    ></script>
   </body>
 </html>

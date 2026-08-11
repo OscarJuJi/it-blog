@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import email.utils
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from html.parser import HTMLParser
@@ -17,6 +18,12 @@ TIMEOUT = 20
 # needed. The feeds that give almost nothing -- Ars at ~77 characters, TechCrunch
 # at ~143 -- are not helped by any limit; `agent/article.py` reads those instead.
 SUMMARY_LIMIT = 1600
+# The feed list is ours, but a typo in `config.toml` should not read the disk,
+# and `urlopen` speaks file:// as happily as https. Same rule as `article.fetch`.
+SCHEMES = frozenset({"http", "https"})
+# Feeds run to a few hundred kilobytes. Anything past this is either a mistake
+# or a response with no end, and reading it to completion is how a run hangs.
+BYTE_LIMIT = 5_000_000
 
 ATOM = "{http://www.w3.org/2005/Atom}"
 DUBLIN_CORE = "{http://purl.org/dc/elements/1.1/}"
@@ -39,16 +46,26 @@ class Entry:
 
 def fetch(url: str, *, timeout: int = TIMEOUT) -> bytes:
     """Download a feed."""
+    if urllib.parse.urlsplit(url).scheme.lower() not in SCHEMES:
+        raise FeedError(f"not an http(s) feed: {url}")
+
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return response.read()
+            return response.read(BYTE_LIMIT)
     except Exception as error:  # URLError, HTTPError, socket timeouts, bad TLS...
         raise FeedError(f"could not fetch {url}: {error}") from error
 
 
 def parse(payload: bytes | str, *, source: str) -> list[Entry]:
     """Read either an RSS or an Atom document."""
+    if _declares_a_doctype(payload):
+        # ElementTree refuses to resolve *external* entities, but it expands
+        # internal ones without limit: ten nested definitions turn a few hundred
+        # bytes into gigabytes and the run dies with the machine. No feed needs a
+        # document type declaration, so the whole class goes away by refusing one.
+        raise FeedError(f"{source}: document type declaration, refusing to parse")
+
     try:
         root = ElementTree.fromstring(payload)
     except ElementTree.ParseError as error:
@@ -80,6 +97,14 @@ def collect(
         except FeedError as error:
             on_error(f"skipping {name}: {error}")
     return entries
+
+
+def _declares_a_doctype(payload: bytes | str) -> bool:
+    """Whether the prolog carries a `<!DOCTYPE`, in either form a feed arrives in."""
+    head = payload[:2000]
+    if isinstance(head, bytes):
+        head = head.decode("utf-8", "replace")
+    return "<!doctype" in head.lower()
 
 
 def _from_rss(item: ElementTree.Element, source: str) -> Entry | None:

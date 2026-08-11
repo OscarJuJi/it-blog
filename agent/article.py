@@ -17,6 +17,7 @@ from __future__ import annotations
 import gzip
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
 from html.parser import HTMLParser
 from typing import Callable, Sequence
@@ -30,6 +31,11 @@ TIMEOUT = 10
 # summary was not worth having either.
 USEFUL = 200
 USER_AGENT = "ti-blog/1.0 (+https://oscarjuji.github.io/ti-blog/)"
+# A feed's link is data, not a promise. `urlopen` speaks file://, ftp:// and
+# data: as happily as it speaks https, so on the runner a hostile entry could
+# have this read /proc/self/environ -- the API key and the workflow token --
+# into the prompt and out into a published post. Only the web is fetched.
+SCHEMES = frozenset({"http", "https"})
 
 # Everything inside these is chrome, not story.
 _SKIP = frozenset(
@@ -90,6 +96,9 @@ class _Reader(HTMLParser):
 
 def fetch(url: str, *, timeout: int = TIMEOUT) -> str:
     """The readable text of *url*, or an empty string if it cannot be had."""
+    if not is_web(url):
+        return ""
+
     request = urllib.request.Request(
         url,
         headers={
@@ -158,6 +167,14 @@ def enrich(
     if filled:
         on_note(f"read {filled} article(s) the feeds had barely described")
     return out
+
+
+def is_web(url: str) -> bool:
+    """Whether *url* is something we are willing to go and get."""
+    try:
+        return urllib.parse.urlsplit(url).scheme.lower() in SCHEMES
+    except ValueError:  # a URL malformed enough that even splitting it fails
+        return False
 
 
 def _replace_summary(entry: Entry, summary: str) -> Entry:

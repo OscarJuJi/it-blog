@@ -134,6 +134,35 @@ def test_it_identifies_itself_and_bounds_the_wait(monkeypatch):
     assert captured["timeout"] == 7
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "file:///etc/passwd",
+        "file://C:/Windows/win.ini",
+        "ftp://example.com/x",
+        "data:text/html,<article>text</article>",
+    ],
+)
+def test_only_the_web_is_fetched(url, monkeypatch):
+    """A feed's link is not a promise about which scheme it uses.
+
+    `file://` is the one that matters: on the CI runner it would read the
+    process environment into the prompt, and out into a published post.
+    """
+    # Recorded rather than raised: `fetch` catches everything, so an exception
+    # here would be swallowed and the test would pass without proving anything.
+    opened = []
+
+    def record(request, timeout=None):
+        opened.append(url)
+        return FakeResponse("<html><body><article><p>secret</p></article></body></html>")
+
+    monkeypatch.setattr("urllib.request.urlopen", record)
+
+    assert article.fetch(url) == ""
+    assert opened == []
+
+
 def entry(title, summary, link="https://example.com/a"):
     return Entry(
         title=title,

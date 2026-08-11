@@ -15,6 +15,7 @@ from typing import Callable, Sequence
 
 from agent.feeds import Entry
 from agent.llm import LLM, LLMError
+from ssg.frontmatter import quote
 from ssg.posts import format_date
 
 # Every agent-written post carries this, and nothing else does. It is what lets
@@ -266,9 +267,9 @@ def _document(
     tags = "\n".join(f"  - {tag}" for tag in (MARKER_TAG, *topics))
     return (
         "---\n"
-        f"title: {_quote(title)}\n"
+        f"title: {quote(title)}\n"
         f"date: {day.isoformat()}\n"
-        f"description: {_quote(_shorten(description))}\n"
+        f"description: {quote(_shorten(description))}\n"
         "tags:\n"
         f"{tags}\n"
         "---\n"
@@ -380,11 +381,6 @@ def _link(text: str, url: str) -> str:
     label = text.replace("[", "\\[").replace("]", "\\]")
     target = f"<{url}>" if re.search(r"[\s()]", url) else url
     return f"[{label}]({target})"
-
-
-def _quote(value: str) -> str:
-    """Quote a front matter value. Our parser has no escapes, so neither do we."""
-    return '"{}"'.format(" ".join(value.split()).replace('"', "'"))
 
 
 def _shorten(text: str) -> str:

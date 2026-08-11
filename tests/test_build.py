@@ -1,6 +1,7 @@
 """Integration: build the real site, with the real templates, into a temp folder."""
 
 import datetime as dt
+import re
 from xml.etree import ElementTree
 
 import pytest
@@ -154,6 +155,50 @@ def test_robots_points_at_the_sitemap_by_absolute_url(site_dir):
 
     assert "User-agent: *" in robots
     assert "Sitemap: https://oscarjuji.github.io/ti-blog/sitemap.xml" in robots
+
+
+def test_every_page_forbids_a_script_it_did_not_serve_itself(site_dir):
+    """GitHub Pages sends no headers we can set, so the policy rides in the page.
+
+    It is the second lock on the same door as escaping: even a script that found
+    its way into the markup cannot run, and neither can one loaded from anywhere
+    but this origin -- which is the origin that also serves the CMS and the
+    GitHub token it holds.
+    """
+    for page in ("index.html", "404.html"):
+        policy = re.search(
+            r'<meta http-equiv="Content-Security-Policy" content="([^"]+)"',
+            read(site_dir / page),
+        )
+        assert policy is not None, f"{page} carries no policy"
+        directives = policy.group(1)
+        assert "script-src 'self'" in directives
+        assert "'unsafe-inline'" not in directives
+        assert "object-src 'none'" in directives
+
+
+def test_the_only_script_on_a_page_is_one_the_policy_allows(site_dir):
+    """A policy that the site's own markup violates would be turned off again."""
+    html = read(site_dir / "index.html")
+
+    scripts = re.findall(r"<script\b[^>]*>", html)
+    assert scripts == ['<script src="/ti-blog/app.js" defer>']
+
+
+def test_the_cms_pins_the_code_it_runs(site_dir):
+    """The CMS holds a token that can write to this repository.
+
+    Loading its code from a moving tag means whatever the CDN serves that day
+    gets to hold the token. An exact version plus a hash makes the browser
+    refuse anything else, without anyone having to notice.
+    """
+    admin = read(site_dir / "admin" / "index.html")
+    tag = re.search(r"<script\b[^>]*>", admin)
+
+    assert tag is not None
+    assert re.search(r"@sveltia/cms@\d+\.\d+\.\d+/", tag.group(0)), "version not pinned"
+    assert re.search(r'integrity="sha(256|384|512)-[A-Za-z0-9+/=]+"', tag.group(0))
+    assert "crossorigin=" in tag.group(0), "SRI is not checked without it"
 
 
 def test_the_social_card_is_absolute_and_actually_exists(site_dir):

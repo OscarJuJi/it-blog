@@ -100,6 +100,30 @@ def _parse(lines: list[str]) -> dict[str, object]:
     return metadata
 
 
+def quote(value: str) -> str:
+    """Write *value* so that :func:`split` reads it back as one scalar.
+
+    The inverse of :func:`_scalar`, and it lives here for that reason: a writer
+    that lived beside its caller drifted from this parser and shipped `\\"` into
+    a published page, because the grammar below has no escapes to drift towards.
+
+    So there is nothing to escape *with*, and three characters are removed
+    instead of escaped:
+
+    * newlines and runs of whitespace collapse, because a second line inside the
+      block is a second metadata key and takes the build down with it;
+    * a double quote becomes a single one, which nobody can tell apart at the
+      size these values are displayed;
+    * a backslash goes altogether. Not for this parser -- it would read one back
+      happily -- but for Sveltia, which parses the same file as real YAML where
+      a backslash opens an escape: `"a \\"` never finds its closing quote and
+      `"C:\\Users"` is an unknown escape, and either one leaves the CMS unable
+      to open a post the site renders perfectly well.
+    """
+    collapsed = " ".join(str(value).split())
+    return '"{}"'.format(collapsed.replace("\\", "").replace('"', "'"))
+
+
 def _scalar(raw: str) -> str:
     """Strip surrounding whitespace and one layer of matching quotes.
 

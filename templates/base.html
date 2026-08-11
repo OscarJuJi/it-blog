@@ -3,6 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- GitHub Pages serves no headers of its own, so the policy travels in the
+     page. `script-src 'self'` is the load-bearing part: this origin also serves
+     /admin/, where the CMS keeps a GitHub token with write access to the repo,
+     and a script planted in a post would be running right beside it. Nothing
+     here is inline, so nothing needs 'unsafe-inline'.
+
+     Images may come from anywhere over https, because a post is allowed to
+     illustrate itself from another site and an image cannot execute. No
+     `frame-ancestors` here: browsers ignore that one when it arrives in a
+     meta tag, and a policy that claims a protection it does not deliver is
+     worse than one that stays quiet about it. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: data:; base-uri 'none'; form-action 'none'; object-src 'none'">
 <title>{{ page_title }}</title>
 <meta name="description" content="{{ description }}">
 <link rel="canonical" href="{{ canonical }}">

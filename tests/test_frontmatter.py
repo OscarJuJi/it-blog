@@ -16,6 +16,60 @@ def test_strips_one_layer_of_quotes():
     assert metadata["title"] == "Quoted: it works"
 
 
+# `quote` lives here rather than beside its callers because it is the inverse of
+# `_scalar`: whoever changes how a value is read has to see how it is written.
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        'He said "hi"',
+        "Line one\ntags: injected\nmore",
+        "trailing backslash \\",
+        "  padded  and    spaced  ",
+        "Kubernetes: the hard way",
+        "[bracketed] and #hashed",
+    ],
+)
+def test_a_quoted_value_reads_back_on_one_line(value):
+    metadata, _ = frontmatter.split(
+        f"---\ntitle: {frontmatter.quote(value)}\ndate: 2026-08-01\n---\n\nbody\n"
+    )
+
+    assert list(metadata) == ["title", "date"]
+    assert "\n" not in metadata["title"]
+    assert metadata["date"] == "2026-08-01"
+
+
+@pytest.mark.parametrize(
+    "value",
+    ['ends with a backslash \\', r"a path C:\Users\PC", 'both "quoted" and \\ slashed'],
+)
+def test_a_quoted_value_carries_nothing_another_parser_would_read_as_an_escape(value):
+    """This parser is not the only one that reads these files.
+
+    Sveltia parses the front matter as real YAML, where a backslash opens an
+    escape sequence: `description: "a \\"` never finds its closing quote, and
+    `"C:\\Users"` is an unknown escape. Either one makes the CMS unable to open
+    a post that this generator renders perfectly well -- the same split that
+    once turned `*dev.to*` into `_dev.to_`. So the written value carries no
+    character any reader could take as an escape.
+    """
+    written = frontmatter.quote(value)
+
+    assert "\\" not in written
+    assert written.count('"') == 2
+    assert written.startswith('"') and written.endswith('"')
+
+
+def test_quoting_keeps_the_words_even_when_it_cannot_keep_the_punctuation():
+    written = frontmatter.quote('The day AI ate "everything" at once')
+
+    metadata, _ = frontmatter.split(f"---\ntitle: {written}\n---\n\nbody\n")
+
+    assert metadata["title"] == "The day AI ate 'everything' at once"
+
+
 def test_keeps_a_hash_inside_a_value():
     metadata, _ = frontmatter.split("---\ntitle: C# in 2026\n---\n")
     assert metadata["title"] == "C# in 2026"

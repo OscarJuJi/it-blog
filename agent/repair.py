@@ -20,6 +20,8 @@ import re
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
+from ssg.frontmatter import quote
+
 APOLOGY = "The summaries could not be generated today"
 LATE_NOTE = (
     "The summaries below were written later, from the articles this post already "
@@ -107,7 +109,13 @@ def refill(
 
     body = "\n\n".join([intro.strip(), LATE_NOTE, *sections])
     head, _, _ = document.partition("\n---\n")
-    head = _DESCRIPTION.sub(f"description: {_quote(intro.strip())}", head, count=1)
+    # `digest._quote`, not a second implementation of it. The one that lived here
+    # escaped with backslashes, which `ssg.frontmatter` does not read: an intro
+    # with a quote left `\"` on the page, and one with a newline wrote a second
+    # line into the metadata block and failed the whole build.
+    head = _DESCRIPTION.sub(
+        lambda _: f"description: {quote(intro.strip())}", head, count=1
+    )
 
     return (
         f"{head}\n---\n"
@@ -121,7 +129,3 @@ def refill(
 
 def _target(link: str) -> str:
     return f"<{link}>" if any(ch in link for ch in " ()") else link
-
-
-def _quote(text: str) -> str:
-    return '"' + text.replace('\\', '\\\\').replace('"', '\\"') + '"'
