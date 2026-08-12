@@ -30,7 +30,7 @@ def test_writes_an_index_listing_every_post(site_dir):
     assert "<!doctype html>" in index
     for post in posts:
         assert post.title in index
-        assert f'href="/ti-blog/{post.path}"' in index
+        assert f'href="/it-blog/{post.path}"' in index
 
 
 def test_writes_a_page_per_post_with_rendered_markdown(site_dir):
@@ -49,14 +49,14 @@ def test_writes_the_json_index_the_browser_fetches(site_dir):
     posts = build_module.load_all(ROOT / "content" / "posts")
 
     assert payload["count"] == len(posts)
-    assert payload["posts"][0]["url"].startswith("/ti-blog/posts/")
+    assert payload["posts"][0]["url"].startswith("/it-blog/posts/")
 
 
 def test_the_page_tells_the_script_where_the_index_lives(site_dir):
     index = read(site_dir / "index.html")
 
-    assert 'data-posts-url="/ti-blog/posts.json"' in index
-    assert 'src="/ti-blog/app.js"' in index
+    assert 'data-posts-url="/it-blog/posts.json"' in index
+    assert 'src="/it-blog/app.js"' in index
     assert (site_dir / "app.js").exists()
 
 
@@ -93,7 +93,7 @@ def test_the_tag_cloud_lists_each_tag_once_and_links_it_home(site_dir):
 
     for tag in tags:
         assert index.count(f'data-tag="{tag}"') == 1
-        assert f'href="/ti-blog/?tag={tag}"' in index
+        assert f'href="/it-blog/?tag={tag}"' in index
 
 
 def test_the_recent_widget_is_capped_and_newest_first(site_dir):
@@ -121,7 +121,9 @@ def test_a_tag_gets_a_page_of_its_own(site_dir):
     posts = build_module.load_all(ROOT / "content" / "posts")
     tagged = [p for p in posts if "digest" in p.tags]
 
-    assert page.count('class="post-item"') == len(tagged)
+    # Counted by `data-slug`, one per card: that attribute is app.js's contract
+    # and survives a reskin, where the visual class names deliberately do not.
+    assert page.count("data-slug=") == len(tagged)
     for post in posts:
         if "digest" not in post.tags:
             assert post.title not in page
@@ -147,14 +149,14 @@ def test_a_tag_page_leaves_the_script_asleep(site_dir):
 
 
 def test_tag_pages_are_in_the_sitemap(site_dir):
-    assert "/ti-blog/tags/digest/" in read(site_dir / "sitemap.xml")
+    assert "/it-blog/tags/digest/" in read(site_dir / "sitemap.xml")
 
 
 def test_robots_points_at_the_sitemap_by_absolute_url(site_dir):
     robots = read(site_dir / "robots.txt")
 
     assert "User-agent: *" in robots
-    assert "Sitemap: https://oscarjuji.github.io/ti-blog/sitemap.xml" in robots
+    assert "Sitemap: https://oscarjuji.github.io/it-blog/sitemap.xml" in robots
 
 
 def test_every_page_forbids_a_script_it_did_not_serve_itself(site_dir):
@@ -182,7 +184,7 @@ def test_the_only_script_on_a_page_is_one_the_policy_allows(site_dir):
     html = read(site_dir / "index.html")
 
     scripts = re.findall(r"<script\b[^>]*>", html)
-    assert scripts == ['<script src="/ti-blog/app.js" defer>']
+    assert scripts == ['<script src="/it-blog/app.js" defer>']
 
 
 def test_the_cms_pins_the_code_it_runs(site_dir):
@@ -204,7 +206,7 @@ def test_the_cms_pins_the_code_it_runs(site_dir):
 def test_the_social_card_is_absolute_and_actually_exists(site_dir):
     index = read(site_dir / "index.html")
 
-    assert 'content="https://oscarjuji.github.io/ti-blog/og.png"' in index
+    assert 'content="https://oscarjuji.github.io/it-blog/og.png"' in index
     # A card pointing at a 404 is worse than no card at all.
     assert (site_dir / "og.png").exists()
 
@@ -221,9 +223,25 @@ def test_a_post_declares_itself_an_article_and_the_index_a_website(site_dir):
 def test_internal_links_carry_the_project_prefix(site_dir):
     page = read(site_dir / "posts" / "2026-08-01-how-this-blog-works" / "index.html")
 
-    assert 'href="/ti-blog/style.css"' in page
-    assert 'href="/ti-blog/feed.xml"' in page
-    assert 'href="/ti-blog/admin/"' in page
+    assert 'href="/it-blog/style.css"' in page
+    assert 'href="/it-blog/feed.xml"' in page
+    assert 'href="/it-blog/admin/"' in page
+
+
+def test_every_page_points_at_a_favicon_that_exists(site_dir):
+    page = read(site_dir / "posts" / "2026-08-01-how-this-blog-works" / "index.html")
+
+    assert '<link rel="icon" href="/it-blog/favicon.svg"' in page
+    # A tab icon pointing at a 404 is a broken image in every bookmark.
+    assert (site_dir / "favicon.svg").is_file()
+
+
+def test_the_footer_links_to_the_portfolio_off_site(site_dir):
+    index = read(site_dir / "index.html")
+
+    # The one link in the chrome that must NOT carry the project prefix.
+    assert 'href="https://oscarjuji.github.io/"' in index
+    assert 'href="/it-blog/https://oscarjuji.github.io/"' not in index
 
 
 def test_copies_static_files_and_the_admin_panel(site_dir):

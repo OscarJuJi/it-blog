@@ -52,6 +52,7 @@ def build(
         "tagline": site.tagline,
         "home_url": site.path(),
         "style_url": site.path("style.css"),
+        "favicon_url": site.path("favicon.svg"),
         "feed_url": site.path(feed.FEED_PATH),
         "admin_url": site.path("admin/"),
         "author": site.author,

@@ -2,7 +2,7 @@
 
 Worth being honest about: on this site the file is close to decorative. Crawlers
 only read robots.txt at the root of an origin, and this is a GitHub *project*
-site served from `/ti-blog/`, so the file they actually fetch is
+site served from `/it-blog/`, so the file they actually fetch is
 `oscarjuji.github.io/robots.txt` -- which belongs to a different repository.
 
 It ships anyway because it costs three lines, it is correct the day `base_url`

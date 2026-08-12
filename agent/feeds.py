@@ -11,7 +11,7 @@ from html.parser import HTMLParser
 from typing import Callable, Iterable, Mapping
 from xml.etree import ElementTree
 
-USER_AGENT = "ti-blog-agent/1.0 (+https://github.com/OscarJuJi/ti-blog)"
+USER_AGENT = "it-blog-agent/1.0 (+https://github.com/OscarJuJi/it-blog)"
 TIMEOUT = 20
 # Generous, because it costs nothing: only dev.to and InfoQ publish enough text
 # to reach it, and cutting them at 400 was throwing away the one thing the model

@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Callable, Sequence
 
 from agent.feeds import Entry
+from agent.history import PastDigest
 from agent.llm import LLM, LLMError
 from ssg.frontmatter import quote
 from ssg.posts import format_date
@@ -30,9 +31,14 @@ MAX_TOPICS = 3
 # client has already done that by the time it raises.
 ATTEMPTS = 3
 DESCRIPTION_LIMIT = 200
+# Four to six sentences is what the prompt asks for, which is roughly 90 to 140
+# words -- call it 550 characters and leave a wide margin below it, so this only
+# fires when the answer is plainly the old one-or-two-sentence shape. Measured
+# 2026-08-11: qwen3:8b came back averaging 364 characters against this rule.
+SHORT_SUMMARY = 450
 
 SYSTEM = (
-    "You write the daily technology digest for a working software engineer's blog. "
+    "You write the twice-weekly technology digest for a working software engineer's blog. "
     "You are accurate before you are interesting, and you never pad."
 )
 
@@ -52,6 +58,21 @@ class Story:
     summary: str
 
 
+@dataclass(frozen=True)
+class Draft:
+    """A checked answer, ready to render.
+
+    A record rather than a tuple because `intro` and `description` are both
+    prose about the same day: swapped by accident they would read plausibly and
+    publish the bug.
+    """
+
+    intro: str
+    description: str
+    stories: list[Story]
+    topics: tuple[str, ...]
+
+
 def build(
     day: dt.date,
     entries: Sequence[Entry],
@@ -62,6 +83,7 @@ def build(
     topics: Sequence[str] = (),
     max_topics: int = MAX_TOPICS,
     attempts: int = ATTEMPTS,
+    previously: Sequence[PastDigest] = (),
     on_error: Callable[[str], None] = print,
 ) -> str:
     """Return the Markdown file for *day*, falling back to links if need be."""
@@ -70,7 +92,7 @@ def build(
 
     for attempt in range(1, attempts + 1) if llm is not None else ():
         try:
-            intro, stories, chosen = write(
+            draft = write(
                 llm,
                 entries,
                 day=day,
@@ -78,9 +100,16 @@ def build(
                 max_stories=max_stories,
                 topics=topics,
                 max_topics=max_topics,
+                previously=previously,
                 on_note=on_error,
             )
-            return render(day, intro, stories, chosen)
+            return render(
+                day,
+                draft.intro,
+                draft.stories,
+                draft.topics,
+                description=draft.description,
+            )
         except LLMError as error:
             # The model could not be reached. Asking again would only wait longer.
             on_error(f"writing links only: {error}")
@@ -100,8 +129,9 @@ def write(
     max_stories: int,
     topics: Sequence[str] = (),
     max_topics: int = MAX_TOPICS,
+    previously: Sequence[PastDigest] = (),
     on_note: Callable[[str], None] = lambda _: None,
-) -> tuple[str, list[Story], tuple[str, ...]]:
+) -> Draft:
     """Ask the model to choose and summarize, and check what comes back."""
     answer = llm.generate(
         prompt(
@@ -111,12 +141,14 @@ def write(
             max_stories=max_stories,
             topics=topics,
             max_topics=max_topics,
+            previously=previously,
         ),
         system=SYSTEM,
     )
     payload = _json(answer, on_note=on_note)
 
     intro = str(payload.get("intro", "")).strip()
+    description = str(payload.get("description", "")).strip()
     chosen = _topics(
         payload.get("topics"), allowed=topics, limit=max_topics, on_note=on_note
     )
@@ -126,7 +158,23 @@ def write(
     floor = min(MIN_USABLE_STORIES, max_stories)
     if len(stories) < floor:
         raise DigestError(f"only {len(stories)} usable stories came back")
-    return intro, stories, chosen
+
+    # Reported, never raised. A thin digest is still worth publishing -- but the
+    # whole reason this edition is twice-weekly rather than daily is the length
+    # of the summaries, so nobody should have to measure them by hand to find
+    # out the model ignored the rule.
+    short = [story for story in stories if len(story.summary) < SHORT_SUMMARY]
+    if short:
+        average = sum(len(story.summary) for story in stories) // len(stories)
+        on_note(
+            f"{len(short)} of {len(stories)} summaries came back shorter than "
+            f"asked for (averaging {average} characters against a floor of "
+            f"{SHORT_SUMMARY}); the digest will read thin"
+        )
+
+    return Draft(
+        intro=intro, description=description, stories=stories, topics=chosen
+    )
 
 
 def prompt(
@@ -137,8 +185,14 @@ def prompt(
     max_stories: int,
     topics: Sequence[str] = (),
     max_topics: int = MAX_TOPICS,
+    previously: Sequence["PastDigest"] = (),
 ) -> str:
-    """The whole instruction, candidates included."""
+    """The whole instruction, candidates included.
+
+    *previously* is what the last editions covered. It buys one thing: a story
+    that has moved on since Tuesday gets written as the thing that changed
+    rather than introduced from scratch to a reader who already read about it.
+    """
     vocabulary = ", ".join(topics)
     topic_rule = (
         f"- Tag the digest with 1 to {max_topics} topics describing what it "
@@ -156,25 +210,36 @@ def prompt(
         for number, entry in enumerate(entries, start=1)
     )
     return f"""Today is {format_date(day)}. Below are {len(entries)} stories \
-pulled from technology news feeds in the last day.
+pulled from technology news feeds over the last few days.
 
 Choose the {min_stories} to {max_stories} that matter most to a working software \
-engineer, and write the digest.
-
+engineer, and write the digest. This edition goes out twice a week, so it should \
+read as the week so far rather than as a list of what happened this morning.
+{_previously(previously)}
 Rules:
 - Base every summary only on the title and feed summary given. If they are thin, \
 say only what the headline supports. Never invent details, numbers, quotes or names.
-- Two or three sentences per story. Say what happened and why a developer should \
-care. No hype, no filler openings like "In a move that".
+- Every summary must run to **at least 90 words**, four to six sentences, and \
+cover three things in order: what happened, why a working developer should care, \
+and what it changes in practice. This is the single most important rule here: \
+this edition goes out twice a week precisely so each story gets room, and a \
+two-sentence summary fails it. Count the words before you answer.
+- No hype and no filler openings like "In a move that". Length must come from \
+detail in the source, never from restating the headline in other words -- if the \
+source genuinely will not support 90 words, choose a different story.
 - Prefer a spread of topics over five variations of the same story.
 - Skip press releases, funding announcements without substance, and pure marketing.
 - Rewrite each headline in plain language. Do not copy it word for word if it is \
 clickbait.
 - Do not write any URLs. Refer to a story by its index number.
+- The intro opens the post. The description is what a search result or a shared \
+link shows instead, so write a different sentence: name the actual subjects of \
+the day, under {DESCRIPTION_LIMIT} characters. Do not repeat the intro.
 {topic_rule}
 Answer with JSON and nothing else, in this shape:
 
-{{"intro": "one sentence on the shape of the day, no more",{topic_field}
+{{"intro": "one sentence on the shape of the day, no more",
+  "description": "one sentence naming what the day covered",{topic_field}
   "stories": [{{"index": 1, "headline": "...", "summary": "..."}}]}}
 
 The stories:
@@ -188,8 +253,16 @@ def render(
     intro: str,
     stories: Sequence[Story],
     topics: Sequence[str] = (),
+    *,
+    description: str = "",
 ) -> str:
-    """Assemble the post from the model's words and our own links."""
+    """Assemble the post from the model's words and our own links.
+
+    *description* is metadata only -- the card on the front page, the `<meta>`
+    tag, the link preview -- and never appears in the body. Without one the
+    intro stands in, which is what every digest did before the model was asked
+    for both, at the cost of a card that repeats the post's own first line.
+    """
     sections = "\n\n".join(
         f"## {_link(story.headline, story.entry.link)}\n\n"
         f"{story.summary}\n\n"
@@ -199,7 +272,7 @@ def render(
     body = f"{intro}\n\n{sections}" if intro else sections
     return _document(
         day,
-        description=intro or _first_headline(stories),
+        description=description or intro or _first_headline(stories),
         body=body,
         footer="Selected and summarized automatically from the sources linked above.",
         topics=topics,
@@ -221,6 +294,37 @@ def render_links(day: dt.date, entries: Sequence[Entry]) -> str:
         body=f"{note}\n\n{links}",
         footer="Selected automatically from the sources linked above.",
     )
+
+
+def _previously(editions: Sequence["PastDigest"]) -> str:
+    """The recap block, or nothing at all when there is nothing to recap.
+
+    Empty for the first edition ever and after a gap long enough that the
+    previous one is no longer worth referring back to -- in which case saying
+    nothing is better than an empty heading the model has to interpret.
+    """
+    if not editions:
+        return ""
+
+    blocks = []
+    for past in editions:
+        covered = "\n".join(f"  - {headline}" for headline in past.headlines)
+        blocks.append(
+            f"{format_date(past.date)} -- {past.description}\n{covered}"
+            if covered
+            else f"{format_date(past.date)} -- {past.description}"
+        )
+    recap = "\n\n".join(blocks)
+    return f"""
+What the previous editions covered:
+
+{recap}
+
+If one of today's stories continues one of those, say so in the first sentence \
+and lead with what has changed since, rather than introducing it again to a \
+reader who already read it here. If nothing continues, ignore this section \
+entirely -- do not mention it.
+"""
 
 
 def _topics(
@@ -263,7 +367,7 @@ def _document(
     footer: str,
     topics: Sequence[str] = (),
 ) -> str:
-    title = f"Daily digest: {format_date(day)}"
+    title = f"Digest: {format_date(day)}"
     tags = "\n".join(f"  - {tag}" for tag in (MARKER_TAG, *topics))
     return (
         "---\n"

@@ -18,6 +18,7 @@
 <title>{{ page_title }}</title>
 <meta name="description" content="{{ description }}">
 <link rel="canonical" href="{{ canonical }}">
+<link rel="icon" href="{{ favicon_url }}" type="image/svg+xml">
 <link rel="alternate" type="application/rss+xml" title="{{ site_title }}" href="{{ feed_url }}">
 <link rel="stylesheet" href="{{ style_url }}">
 <meta name="color-scheme" content="light dark">
@@ -57,7 +58,10 @@
 
 <footer class="site-footer">
   <p>&copy; {{ year }} {{ author }}</p>
-  <p><a href="{{ feed_url }}">RSS</a> &middot; <a href="{{ admin_url }}">Write a post</a></p>
+  <!-- The portfolio link is absolute on purpose: it leaves this site, so it is
+       the one href in the chrome that must not go through Site.path(). -->
+  <p><a href="{{ feed_url }}">RSS</a> &middot; <a href="{{ admin_url }}">Write a post</a>
+     &middot; <a href="https://oscarjuji.github.io/" rel="me">Portfolio</a></p>
 </footer>
 
 <script src="{{ script_url }}" defer></script>

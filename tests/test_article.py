@@ -130,7 +130,7 @@ def test_it_identifies_itself_and_bounds_the_wait(monkeypatch):
 
     article.fetch("https://example.com/x", timeout=7)
 
-    assert "ti-blog" in (captured["agent"] or "")
+    assert "it-blog" in (captured["agent"] or "")
     assert captured["timeout"] == 7
 
 

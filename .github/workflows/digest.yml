@@ -1,9 +1,10 @@
-﻿name: Daily digest
+﻿name: Digest
 
 on:
   schedule:
     # 13:00 UTC is 07:00 in Mexico City, which does not observe DST.
-    - cron: "0 13 * * *"
+    # Tuesday and Friday: 2 and 5 in cron's day-of-week, where Sunday is 0.
+    - cron: "0 13 * * 2,5"
   workflow_dispatch:
 
 jobs:
@@ -32,14 +33,14 @@ jobs:
         id: commit
         run: |
           if [ -z "$(git status --porcelain content/posts)" ]; then
-            echo "today's digest is already published"
+            echo "this edition is already published"
             echo "published=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add content/posts
-          git commit -m "Daily digest for $(date -u +%Y-%m-%d)"
+          git commit -m "Digest for $(date -u +%Y-%m-%d)"
           git push
           echo "published=true" >> "$GITHUB_OUTPUT"
 
@@ -65,8 +66,12 @@ jobs:
       - name: Look for digests that published without summaries
         id: look
         run: |
-          read today yesterday < <(python3 - <<'PY'
+          read today previous is_edition_day < <(python3 - <<'PY'
           import datetime as dt, tomllib, zoneinfo
+          # Tuesday and Friday, matching the cron above. Kept here rather than
+          # hardcoded in the shell so the two definitions of "an edition day"
+          # sit next to each other.
+          EDITION_DAYS = {1, 4}
           with open("config.toml", "rb") as handle:
               name = tomllib.load(handle)["site"].get("timezone", "UTC")
           try:
@@ -74,29 +79,44 @@ jobs:
           except Exception:
               zone = dt.timezone.utc
           today = dt.datetime.now(dt.timezone.utc).astimezone(zone).date()
-          print(today.isoformat(), (today - dt.timedelta(days=1)).isoformat())
+          previous = today - dt.timedelta(days=1)
+          while previous.weekday() not in EDITION_DAYS:
+              previous -= dt.timedelta(days=1)
+          print(today.isoformat(), previous.isoformat(), int(today.weekday() in EDITION_DAYS))
           PY
           )
 
           problems=""
           note() { problems="${problems}- $1"$'\n'; }
 
+          # Both names are accepted on purpose: the digest was daily until
+          # 2026-08-11 and the posts published then keep their filenames, so
+          # during the changeover the previous edition may still be a daily one.
           inspect() {
-            local day="$1" label="$2" post="content/posts/$1-daily-digest.md"
-            if [ ! -f "$post" ]; then
+            local day="$1" label="$2" post=""
+            for candidate in "content/posts/$1-weekly-digest.md" "content/posts/$1-daily-digest.md"; do
+              [ -f "$candidate" ] && post="$candidate" && break
+            done
+            if [ -z "$post" ]; then
               note "**$day** ($label): no digest exists. That day's run never published one."
             elif grep -q "summaries could not be generated" "$post"; then
               note "**$day** ($label): published as a list of links. Every one of the model's answers came back unusable."
             fi
           }
 
-          inspect "$today" "today"
-          inspect "$yesterday" "the day before"
+          # A manual run on a Wednesday should not report a missing Wednesday
+          # edition -- there is not meant to be one.
+          if [ "$is_edition_day" = "1" ]; then
+            inspect "$today" "today"
+          else
+            echo "not an edition day; only checking the previous one"
+          fi
+          inspect "$previous" "the previous edition"
 
           if [ -n "$problems" ]; then
             echo "$problems"
           else
-            echo "both digests carry summaries"
+            echo "the recent digests carry summaries"
           fi
 
           {
@@ -113,7 +133,7 @@ jobs:
           PROBLEMS: ${{ steps.look.outputs.problems }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          title="Daily digest published without summaries"
+          title="Digest published without summaries"
           body="$PROBLEMS
           The agent falls back to a list of links when the model's answer cannot be
           used, and it does that quietly -- the run still goes green. Check the
@@ -121,10 +141,10 @@ jobs:
           \`attempt N of 3 came back unusable\`, \`generation stopped early\`, or
           \`the answer arrived truncated\`.
 
-          Regenerating a *past* day with \`--force\` is not a repair: the feed window
-          is 26 hours, so it would file today's stories under that day's date."
+          Regenerating a *past* edition with \`--force\` is not a repair: the feed
+          window is 96 hours, so it would file this week's stories under that date."
 
-          # One running issue rather than a new one every morning.
+          # One running issue rather than a new one every edition.
           existing=$(gh issue list --state open --search "$title in:title" \
             --json number --jq '.[0].number // empty')
           if [ -n "$existing" ]; then

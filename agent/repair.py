@@ -9,7 +9,7 @@ rewritten, byte for byte elsewhere.
 Refilling a links-only digest is the delicate one. The honest way is to
 summarise the articles *that post already links to* -- so the words describe
 the very stories that ran that day. What must never happen is re-running the
-feeds for an old date: the collection window is twenty-six hours, so that would
+feeds for an old date: the collection window is ninety-six hours, so that would
 file today's news under a date in the past. The refilled post says openly that
 it was written after the fact.
 """

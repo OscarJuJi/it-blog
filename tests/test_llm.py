@@ -192,9 +192,73 @@ def test_ollama_speaks_its_own_shape(monkeypatch):
         "model": "qwen3:8b",
         "prompt": "hi",
         "stream": False,
-        "options": {"temperature": 0.4},
+        "options": {"temperature": 0.4, "num_ctx": llm.OLLAMA_CONTEXT},
         "system": "s",
     }
+
+
+def test_a_read_that_times_out_is_a_model_failure_like_any_other(monkeypatch):
+    # A socket timing out mid-read raises TimeoutError, which is an OSError and
+    # *not* a URLError, so it used to escape _post uncaught. That skips
+    # digest.build's fallback entirely: instead of publishing the reading list,
+    # the run dies with a traceback and the day gets no post at all.
+    urlopen = responder(*[TimeoutError("timed out")] * llm.RETRIES)
+    monkeypatch.setattr("urllib.request.urlopen", urlopen)
+
+    with pytest.raises(llm.LLMError, match="timed out"):
+        llm.Gemini("m", "key").generate("hi")
+    assert len(urlopen.calls) == llm.RETRIES
+
+
+def test_a_timeout_that_passes_on_the_retry_still_answers(monkeypatch):
+    urlopen = responder(TimeoutError("timed out"), {"output_text": "second time lucky"})
+    monkeypatch.setattr("urllib.request.urlopen", urlopen)
+
+    assert llm.Gemini("m", "key").generate("hi") == "second time lucky"
+
+
+def test_ollama_is_given_long_enough_to_answer(monkeypatch):
+    # Measured on this machine: one real digest prompt at OLLAMA_CONTEXT took
+    # 247 seconds with the model already loaded. The old 300-second default
+    # timed out on the first call of a run, which also pays to load the model.
+    urlopen = responder({"response": "ok"})
+    monkeypatch.setattr("urllib.request.urlopen", urlopen)
+    seen = {}
+
+    def watch(request, timeout=None):
+        seen["timeout"] = timeout
+        return urlopen(request, timeout=timeout)
+
+    monkeypatch.setattr("urllib.request.urlopen", watch)
+    llm.Ollama("qwen3:8b").generate("hi")
+
+    assert seen["timeout"] == llm.OLLAMA_TIMEOUT
+    assert llm.OLLAMA_TIMEOUT >= 600
+
+
+def test_ollama_asks_for_a_context_that_fits_the_whole_prompt(monkeypatch):
+    # Ollama defaults to 4096 tokens and silently drops whatever does not fit.
+    # Since the agent began reading the linked articles the digest prompt runs
+    # to ~11k tokens, so the local model stopped seeing the instructions it was
+    # meant to follow and answered with prose. That cost this backend the only
+    # thing it is for: iterating on the prompt without spending Gemini quota.
+    urlopen = responder({"response": "ok"})
+    monkeypatch.setattr("urllib.request.urlopen", urlopen)
+
+    llm.Ollama("qwen3:8b").generate("hi")
+
+    options = json.loads(urlopen.calls[0].data)["options"]
+    assert options["num_ctx"] == llm.OLLAMA_CONTEXT
+    # This has to hold the prompt *and* the answer, and the prompt grew twice in
+    # one day. Measured 2026-08-11: 40 enriched candidates plus a recap of the
+    # last two editions make a 94,032-character prompt, ~23,500 tokens. A digest
+    # is ~1,200 more of visible answer, before qwen3 does any thinking.
+    #
+    # Raising `candidate_limit` in config.toml raises this. The first version of
+    # the twice-weekly settings did not, which left ~1,000 tokens for a 1,200
+    # token answer and put the local backend straight back into the failure it
+    # had been fixed out of that morning.
+    assert llm.OLLAMA_CONTEXT >= 28672
 
 
 def test_the_backend_follows_the_environment(monkeypatch):

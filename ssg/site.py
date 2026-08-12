@@ -58,6 +58,6 @@ class Site:
 
 
 def _normalize_base(value: str) -> str:
-    """Accept ``ti-blog``, ``/ti-blog`` or ``/ti-blog/`` and settle on ``/ti-blog``."""
+    """Accept ``it-blog``, ``/it-blog`` or ``/it-blog/`` and settle on ``/it-blog``."""
     trimmed = value.strip().strip("/")
     return f"/{trimmed}" if trimmed else ""

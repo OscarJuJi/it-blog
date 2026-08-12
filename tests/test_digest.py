@@ -59,7 +59,7 @@ class FakeLLM:
         return self.answer
 
 
-def answer(*indices, intro="A quiet day.", topics=None):
+def answer(*indices, intro="A quiet day.", topics=None, description=None):
     payload = {
         "intro": intro,
         "stories": [
@@ -73,6 +73,8 @@ def answer(*indices, intro="A quiet day.", topics=None):
     }
     if topics is not None:
         payload["topics"] = topics
+    if description is not None:
+        payload["description"] = description
     return json.dumps(payload)
 
 
@@ -285,11 +287,62 @@ def test_the_post_it_writes_is_a_post_the_generator_can_load(tmp_path):
     path.write_text(document, encoding="utf-8")
     post = posts.load(path)
 
-    assert post.title == "Daily digest: August 1, 2026"
+    # Not "Daily digest" any more: it goes out Tuesdays and Fridays, and the
+    # title is the one piece of this a reader actually sees.
+    assert post.title == "Digest: August 1, 2026"
     assert post.date == DAY
     assert post.tags == (digest.MARKER_TAG,)
     assert post.description == "A quiet day."
     assert post.slug == "2026-08-01-daily-digest"
+
+
+def test_the_description_is_not_the_body_repeated(tmp_path):
+    # The card, the <meta> and the post itself used to open with the same
+    # sentence, because `intro` was serving as both.
+    document = digest.build(
+        DAY,
+        ENTRIES,
+        llm=FakeLLM(
+            answer(1, 2, 3, intro="A quiet day.", description="Rust 2.0 and a rewrite.")
+        ),
+    )
+
+    path = tmp_path / "2026-08-01-daily-digest.md"
+    path.write_text(document, encoding="utf-8")
+    post = posts.load(path)
+
+    assert post.description == "Rust 2.0 and a rewrite."
+    assert post.body.lstrip().startswith("A quiet day.")
+
+
+def test_a_model_that_writes_no_description_still_gets_one(tmp_path):
+    # Every answer before this field existed is this case, and the intro is a
+    # better description than nothing.
+    document = digest.build(DAY, ENTRIES, llm=FakeLLM(answer(1, 2, 3, intro="A quiet day.")))
+
+    path = tmp_path / "2026-08-01-daily-digest.md"
+    path.write_text(document, encoding="utf-8")
+
+    assert posts.load(path).description == "A quiet day."
+
+
+def test_a_blank_description_falls_back_to_the_intro(tmp_path):
+    document = digest.build(
+        DAY, ENTRIES, llm=FakeLLM(answer(1, 2, 3, intro="A quiet day.", description="   "))
+    )
+
+    path = tmp_path / "2026-08-01-daily-digest.md"
+    path.write_text(document, encoding="utf-8")
+
+    assert posts.load(path).description == "A quiet day."
+
+
+def test_the_prompt_asks_for_a_description_that_is_not_the_intro():
+    text = digest.prompt(ENTRIES, day=DAY, min_stories=3, max_stories=5)
+
+    assert '"description"' in text
+    # The whole point is that the two differ, so the instruction has to say so.
+    assert "description" in text and "intro" in text
 
 
 def test_links_come_from_the_feeds_not_from_the_model():
@@ -399,6 +452,69 @@ def test_the_footer_does_not_claim_summaries_nobody_wrote():
 def test_no_entries_is_an_error():
     with pytest.raises(digest.DigestError, match="no entries"):
         digest.build(DAY, [], llm=None)
+
+
+def test_the_prompt_carries_what_the_last_editions_covered():
+    from agent.history import PastDigest
+
+    previously = [
+        PastDigest(
+            date=dt.date(2026, 8, 7),
+            description="Rust and a database rewrite.",
+            headlines=("Rust 2.0 reaches beta", "A database rewrite"),
+        )
+    ]
+
+    text = digest.prompt(
+        ENTRIES, day=DAY, min_stories=3, max_stories=5, previously=previously
+    )
+
+    assert "Rust 2.0 reaches beta" in text
+    assert "August 7, 2026" in text
+    # Knowing what ran is useless unless the model is told what to do about it.
+    assert "continu" in text.lower()
+
+
+def test_the_prompt_says_nothing_about_past_editions_when_there_are_none():
+    text = digest.prompt(ENTRIES, day=DAY, min_stories=3, max_stories=5)
+
+    assert "previous edition" not in text.lower()
+
+
+def test_summaries_that_come_back_short_are_reported(tmp_path):
+    # qwen3:8b answered a real prompt with 2-3 sentences per story where the
+    # rule asks for four to six, and nothing anywhere said so: the digest
+    # published, green, just thinner than intended. Length is the whole point of
+    # the twice-weekly edition, so falling short has to be visible in the log.
+    notes = []
+    digest.build(DAY, ENTRIES, llm=FakeLLM(answer(1, 2, 3)), on_error=notes.append)
+
+    assert any("shorter" in note for note in notes)
+
+
+def test_summaries_of_the_length_asked_for_are_not_complained_about():
+    long_enough = "This is what happened, at the length the rules ask for. " * 10
+    reply = json.dumps(
+        {
+            "intro": "A quiet day.",
+            "stories": [
+                {"index": index, "headline": f"H{index}", "summary": long_enough}
+                for index in (1, 2, 3)
+            ],
+        }
+    )
+    notes = []
+    digest.build(DAY, ENTRIES, llm=FakeLLM(reply), on_error=notes.append)
+
+    assert not any("shorter" in note for note in notes)
+
+
+def test_the_prompt_asks_for_summaries_worth_the_wait():
+    text = digest.prompt(ENTRIES, day=DAY, min_stories=3, max_stories=5)
+
+    # Twice-weekly means each story has to carry more than a sentence.
+    assert "Two or three sentences" not in text
+    assert "four to six sentences" in text.lower()
 
 
 def test_the_prompt_carries_every_candidate_and_forbids_urls():

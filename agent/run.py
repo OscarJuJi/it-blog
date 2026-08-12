@@ -1,4 +1,4 @@
-"""The daily run: read the feeds, write the post, leave the commit to git.
+"""The Tuesday and Friday run: read the feeds, write the post, leave the commit to git.
 
     python -m agent.run --dry-run          see today's digest without writing it
     python -m agent.run --llm ollama       draft it with a local model
@@ -19,7 +19,10 @@ from agent.llm import LLM, LLMError, from_environment
 from ssg.site import ROOT, load_config
 
 POSTS = ROOT / "content" / "posts"
-SLUG = "daily-digest"
+# The digest went out daily until 2026-08-11 and the eleven posts published
+# under `daily-digest` keep that name and their URLs; only what is written from
+# here on is weekly. This is the one place a digest filename is assembled.
+SLUG = "weekly-digest"
 DEFAULT_OLLAMA_MODEL = "qwen3:8b"
 
 
@@ -79,6 +82,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             on_note=_warn,
         )
 
+    # What the last editions said, so a story that has moved on since Tuesday
+    # gets written as what changed rather than introduced from scratch.
+    previously = history.recent_digests(
+        args.output_dir,
+        before=day,
+        limit=settings.get("recall_editions", 2),
+        marker=digest.MARKER_TAG,
+    )
+    if previously:
+        print(f"recalling {len(previously)} previous edition(s)")
+
     document = digest.build(
         day,
         shortlist,
@@ -87,6 +101,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         max_stories=settings.get("max_stories", 10),
         topics=settings.get("topics", []),
         max_topics=settings.get("max_topics", digest.MAX_TOPICS),
+        previously=previously,
         on_error=_warn,
     )
 
@@ -132,7 +147,7 @@ def _warn(message: str) -> None:
 
 
 def _arguments(argv: Sequence[str] | None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Write the daily digest.")
+    parser = argparse.ArgumentParser(description="Write the twice-weekly digest.")
     parser.add_argument(
         "--dry-run", action="store_true", help="print the post instead of writing it"
     )

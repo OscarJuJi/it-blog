@@ -157,8 +157,9 @@ def slug_for(path: Path) -> str:
     """Derive a slug from a filename.
 
     The whole stem is kept, date prefix included. Dropping the date reads better
-    but collides: every daily digest is called ``daily-digest``, so the second
-    one would fight the first for the same URL.
+    but collides: every digest the agent writes carries the same slug -- once
+    ``daily-digest``, now ``weekly-digest`` -- so the second one would fight the
+    first for the same URL.
     """
     slug = slugify(Path(path).stem)
     if not slug:

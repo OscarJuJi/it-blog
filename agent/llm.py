@@ -16,6 +16,20 @@ from typing import Any, Callable, Protocol
 
 GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions"
 OLLAMA_HOST = "http://localhost:11434"
+# Ollama defaults to 4096 tokens of context and drops the overflow without
+# saying so -- on the default the local model answered from a fragment of the
+# instructions, in prose, three attempts a run.
+#
+# This has to hold the prompt and the answer together, with room for the
+# thinking qwen3 does in between, and the prompt is not a fixed size: it grew
+# from ~11,000 tokens to ~23,500 the day `candidate_limit` went 20 -> 40 and the
+# recap of previous editions arrived. **Raising candidate_limit means raising
+# this**, or the local backend silently returns to answering from a fragment.
+OLLAMA_CONTEXT = 32768
+# One real digest at that context measured 247 seconds on a warm model, and the
+# first call of a run also pays to load it. The old 300 was a timeout, not a
+# limit worth enforcing: nothing local is waiting on this.
+OLLAMA_TIMEOUT = 900
 
 RETRIES = 3
 RETRY_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
@@ -106,21 +120,23 @@ class Ollama:
         model: str,
         *,
         host: str = OLLAMA_HOST,
-        timeout: int = 300,
+        timeout: int = OLLAMA_TIMEOUT,
         temperature: float = 0.4,
+        context: int = OLLAMA_CONTEXT,
     ):
         self.name = f"ollama:{model}"
         self._model = model
         self._url = f"{host.rstrip('/')}/api/generate"
         self._timeout = timeout
         self._temperature = temperature
+        self._context = context
 
     def generate(self, prompt: str, *, system: str = "") -> str:
         body: dict[str, Any] = {
             "model": self._model,
             "prompt": prompt,
             "stream": False,
-            "options": {"temperature": self._temperature},
+            "options": {"temperature": self._temperature, "num_ctx": self._context},
         }
         if system:
             body["system"] = system
@@ -219,6 +235,11 @@ def _post(
                 raise last from error
         except urllib.error.URLError as error:
             last = LLMError(f"could not reach {url}: {error.reason}")
+        # Not covered by the line above: a socket that times out mid-read raises
+        # TimeoutError, an OSError urllib does not wrap. Uncaught it escapes
+        # past digest.build's fallback and costs the day its post entirely.
+        except TimeoutError as error:
+            last = LLMError(f"could not reach {url}: timed out: {error}")
         except json.JSONDecodeError as error:
             raise LLMError(f"{url} did not answer with JSON: {error}") from error
 

@@ -2,14 +2,14 @@
 
 backend:
   name: github
-  repo: OscarJuJi/ti-blog
+  repo: OscarJuJi/it-blog
   branch: main
 
-site_url: https://oscarjuji.github.io/ti-blog/
-display_url: https://oscarjuji.github.io/ti-blog/
+site_url: https://oscarjuji.github.io/it-blog/
+display_url: https://oscarjuji.github.io/it-blog/
 
 media_folder: static/images
-public_folder: /ti-blog/images
+public_folder: /it-blog/images
 
 collections:
   - name: posts

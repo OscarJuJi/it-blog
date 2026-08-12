@@ -14,7 +14,7 @@ SITE = Site.from_config(
             "title": "IT Brief",
             "description": "Daily tech news.",
             "url": "https://oscarjuji.github.io",
-            "base_url": "/ti-blog",
+            "base_url": "/it-blog",
             "language": "en",
         }
     }
@@ -52,7 +52,7 @@ def test_feed_is_well_formed_xml_with_one_item_per_post():
     items = channel.findall("item")
     assert len(items) == 2
     assert items[0].findtext("title") == "Daily digest & more"
-    assert items[0].findtext("link") == "https://oscarjuji.github.io/ti-blog/posts/daily-digest/"
+    assert items[0].findtext("link") == "https://oscarjuji.github.io/it-blog/posts/daily-digest/"
     assert items[0].findtext("pubDate") == "Sat, 01 Aug 2026 00:00:00 +0000"
     assert [category.text for category in items[0].findall("category")] == ["digest", "news"]
 
@@ -85,12 +85,12 @@ def test_sitemap_lists_the_home_page_and_every_post():
     locations = [url.findtext("s:loc", namespaces=namespace) for url in root.findall("s:url", namespace)]
 
     assert locations == [
-        "https://oscarjuji.github.io/ti-blog/",
-        "https://oscarjuji.github.io/ti-blog/posts/daily-digest/",
-        "https://oscarjuji.github.io/ti-blog/posts/older-note/",
+        "https://oscarjuji.github.io/it-blog/",
+        "https://oscarjuji.github.io/it-blog/posts/daily-digest/",
+        "https://oscarjuji.github.io/it-blog/posts/older-note/",
         # POSTS[0] carries digest and news; POSTS[1] is untagged.
-        "https://oscarjuji.github.io/ti-blog/tags/digest/",
-        "https://oscarjuji.github.io/ti-blog/tags/news/",
+        "https://oscarjuji.github.io/it-blog/tags/digest/",
+        "https://oscarjuji.github.io/it-blog/tags/news/",
     ]
 
 

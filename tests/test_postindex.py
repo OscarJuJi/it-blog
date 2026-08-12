@@ -12,7 +12,7 @@ SITE = Site.from_config(
             "title": "IT Brief",
             "description": "Daily tech news.",
             "url": "https://oscarjuji.github.io",
-            "base_url": "/ti-blog",
+            "base_url": "/it-blog",
             "language": "en",
         }
     }
@@ -60,7 +60,7 @@ def test_it_keeps_the_order_it_was_given():
 
 def test_every_url_carries_the_base_prefix_and_a_trailing_slash():
     for post in load()["posts"]:
-        assert post["url"] == f"/ti-blog/posts/{post['slug']}/"
+        assert post["url"] == f"/it-blog/posts/{post['slug']}/"
 
 
 def test_a_post_without_tags_gets_an_empty_list_not_null():

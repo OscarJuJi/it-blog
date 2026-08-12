@@ -30,7 +30,7 @@ TIMEOUT = 10
 # Enough of a story to write two honest sentences about. Below this the feed
 # summary was not worth having either.
 USEFUL = 200
-USER_AGENT = "ti-blog/1.0 (+https://oscarjuji.github.io/ti-blog/)"
+USER_AGENT = "it-blog/1.0 (+https://oscarjuji.github.io/it-blog/)"
 # A feed's link is data, not a promise. `urlopen` speaks file://, ftp:// and
 # data: as happily as it speaks https, so on the runner a hostile entry could
 # have this read /proc/self/environ -- the API key and the workflow token --

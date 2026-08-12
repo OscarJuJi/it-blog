@@ -31,6 +31,10 @@ BROWSERS = (
     r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
 )
 
+# The card is a window, like everything else on the site. Colours are copied
+# from style.css rather than read from it: this runs once in a blue moon, by
+# hand, and a CSS parser here would be more machinery than the problem deserves.
+# If the palette changes there, change it here and re-run -- nothing else will.
 CARD = """<!doctype html>
 <meta charset="utf-8">
 <style>
@@ -38,24 +42,67 @@ CARD = """<!doctype html>
   html, body { margin: 0; padding: 0; }
   body {
     width: 1200px; height: 630px;
-    background: #ffd23f; color: #15140f;
+    background-color: #efe6d8;
+    background-image:
+      radial-gradient(50rem 30rem at 10% -10%, rgba(168,67,26,0.16), transparent 60%),
+      radial-gradient(40rem 30rem at 95% 110%, rgba(125,47,16,0.14), transparent 62%);
+    color: #2e2118;
     font: 16px Georgia, "Times New Roman", serif;
-    display: flex; flex-direction: column; justify-content: center;
-    padding: 0 84px; box-sizing: border-box;
-    border-bottom: 24px solid #15140f;
+    display: flex; align-items: center; justify-content: center;
+    box-sizing: border-box; padding: 54px;
   }
+  .window {
+    width: 100%; height: 100%;
+    background: #fbf6ec;
+    border: 1px solid #8a7359; border-radius: 14px;
+    box-shadow: 0 6px 16px rgba(58,38,22,0.22), 0 22px 48px rgba(58,38,22,0.18);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px 16px 28px;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.45), rgba(255,255,255,0) 58%),
+      linear-gradient(180deg, #b04a17 0%, #7d2f10 100%);
+    border-bottom: 1px solid #7d2f10;
+    color: #fdf3e4;
+    font: 700 26px/1 "Segoe UI", system-ui, Arial, sans-serif;
+    text-shadow: 0 1px 0 rgba(0,0,0,0.3);
+  }
+  .controls { display: flex; gap: 8px; }
+  .controls b {
+    width: 30px; height: 24px; border-radius: 5px;
+    border: 1px solid rgba(0,0,0,0.35);
+    background-image: linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.05));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.5);
+  }
+  .controls b:last-child { background-image: linear-gradient(180deg, #e8825f, #a33112); }
+  .body { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 0 64px; }
   h1 {
     margin: 0;
-    font: 800 132px/0.95 system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
-    letter-spacing: -0.04em; text-transform: uppercase;
+    font: 800 128px/0.95 "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+    letter-spacing: -0.04em; color: #2e2118;
+    text-shadow: 0 2px 0 rgba(255,255,255,0.7);
   }
-  p { margin: 28px 0 0; font-size: 40px; font-style: italic; max-width: 22ch; }
-  .rule { width: 220px; height: 14px; background: #15140f; margin-top: 44px; }
+  p { margin: 30px 0 0; font-size: 38px; font-style: italic; color: #6d5b4b; max-width: 24ch; }
+  .rule {
+    width: 240px; height: 12px; margin-top: 40px; border-radius: 6px;
+    background-image: linear-gradient(180deg, #c96a34, #a8431a);
+  }
 </style>
 <body>
-  <h1>IT&nbsp;Brief</h1>
-  <p>A daily digest of what happened in tech.</p>
-  <div class="rule"></div>
+  <div class="window">
+    <div class="bar">
+      <span>IT Brief</span>
+      <span class="controls"><b></b><b></b><b></b></span>
+    </div>
+    <div class="body">
+      <h1>IT&nbsp;Brief</h1>
+      <p>What mattered in tech, twice a week.</p>
+      <div class="rule"></div>
+    </div>
+  </div>
 </body>
 """
 
@@ -76,23 +123,33 @@ def main() -> int:
     card.write_text(CARD, encoding="utf-8")
     shot = work / "og.png"
 
-    subprocess.run(
-        [
-            browser(),
-            "--headless=new",
-            "--disable-gpu",
-            "--hide-scrollbars",
-            "--force-device-scale-factor=1",
-            f"--screenshot={shot}",
-            f"--window-size={WIDTH},{HEIGHT}",
-            card.as_uri(),
-        ],
-        check=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    command = [
+        browser(),
+        "--headless=new",
+        "--disable-gpu",
+        "--hide-scrollbars",
+        "--no-first-run",
+        # Its own profile, thrown away with the temp dir. Without one Edge reads
+        # the real profile and can sit waiting on first-run state that never
+        # arrives in headless.
+        f"--user-data-dir={work / 'profile'}",
+        "--force-device-scale-factor=1",
+        f"--screenshot={shot}",
+        f"--window-size={WIDTH},{HEIGHT}",
+        card.as_uri(),
+    ]
+
+    # Twice, because the first call against a fresh profile writes the profile
+    # and exits without drawing anything -- reproducibly, on Edge 2026-08. It
+    # exits 0 while doing it, so only the missing file gives it away.
+    for attempt in (1, 2):
+        subprocess.run(command, check=True, stdout=subprocess.DEVNULL)
+        if shot.exists():
+            break
+        print(f"attempt {attempt}: the browser drew nothing, retrying")
 
     if not shot.exists():
+        print("the browser never wrote the screenshot", file=sys.stderr)
         return 1
     TARGET.parent.mkdir(parents=True, exist_ok=True)
     TARGET.write_bytes(shot.read_bytes())

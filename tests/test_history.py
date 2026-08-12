@@ -34,6 +34,40 @@ def write_digest(tmp_path, day, *pairs, marker=True):
     return path
 
 
+def test_recent_digests_hands_back_what_the_last_editions_said(tmp_path):
+    # `seen` answers "have we covered this link". This answers "what did we
+    # say", which is what lets the next digest notice a story continuing.
+    write_digest(tmp_path, dt.date(2026, 8, 4), ("An older thing", "https://example.com/old"))
+    write_digest(tmp_path, dt.date(2026, 8, 7), ("A thing", "https://example.com/a"))
+
+    recent = history.recent_digests(
+        tmp_path, before=dt.date(2026, 8, 11), limit=2, marker=digest.MARKER_TAG
+    )
+
+    assert [past.date for past in recent] == [dt.date(2026, 8, 7), dt.date(2026, 8, 4)]
+    assert "A thing" in recent[0].headlines
+    assert recent[0].description
+
+
+def test_recent_digests_keeps_only_as_many_as_asked_for(tmp_path):
+    for day in (1, 4, 7):
+        write_digest(tmp_path, dt.date(2026, 8, day), (f"Thing {day}", f"https://example.com/{day}"))
+
+    recent = history.recent_digests(
+        tmp_path, before=dt.date(2026, 8, 11), limit=2, marker=digest.MARKER_TAG
+    )
+
+    assert [past.date for past in recent] == [dt.date(2026, 8, 7), dt.date(2026, 8, 4)]
+
+
+def test_recent_digests_ignores_posts_a_person_wrote(tmp_path):
+    write_digest(tmp_path, dt.date(2026, 8, 7), ("Mine", "https://example.com/mine"), marker=False)
+
+    assert history.recent_digests(
+        tmp_path, before=dt.date(2026, 8, 11), limit=2, marker=digest.MARKER_TAG
+    ) == []
+
+
 def test_it_finds_the_links_of_a_published_digest(tmp_path):
     write_digest(tmp_path, dt.date(2026, 8, 9), ("A thing", "https://example.com/a"))
 

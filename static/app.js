@@ -6,7 +6,7 @@
  * JavaScript is not a degraded mode but simply this one with no filter applied.
  *
  * The one rule worth keeping: URLs are consumed, never constructed. Python put
- * the /ti-blog prefix on them; string-joining here would silently drop it.
+ * the /it-blog prefix on them; string-joining here would silently drop it.
  */
 (function () {
   "use strict";

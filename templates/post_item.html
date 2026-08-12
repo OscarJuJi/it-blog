@@ -1,6 +1,13 @@
-  <article class="post-item" data-slug="{{ slug }}">
-    <time datetime="{{ iso_date }}">{{ display_date }}</time>
-    <h2><a href="{{ url }}">{{ title }}</a></h2>
-    <p>{{ summary }}</p>
-    {{ tags | safe }}
+  <article class="window post-item" data-slug="{{ slug }}">
+    <div class="window-bar">
+      <time class="window-title" datetime="{{ iso_date }}">{{ display_date }}</time>
+      <!-- Decoration, not controls: there is nothing to minimise. Hidden from
+           assistive tech so nobody is offered three buttons that do nothing. -->
+      <span class="window-controls" aria-hidden="true"><b></b><b></b><b></b></span>
+    </div>
+    <div class="window-body">
+      <h2><a href="{{ url }}">{{ title }}</a></h2>
+      <p>{{ summary }}</p>
+      {{ tags | safe }}
+    </div>
   </article>

@@ -78,6 +78,55 @@ def seen(
     return Seen(frozenset(links), frozenset(titles))
 
 
+@dataclass(frozen=True)
+class PastDigest:
+    """One already-published edition, in the terms the model needs to read it."""
+
+    date: dt.date
+    description: str
+    headlines: tuple[str, ...]
+
+
+def recent_digests(
+    posts_dir: Path, *, before: dt.date, limit: int, marker: str
+) -> list[PastDigest]:
+    """The last *limit* editions published before *before*, newest first.
+
+    Deliberately not folded into `seen`. That function answers "have we covered
+    this link already" and its answer is a set built to be tested against; this
+    one answers "what did we say last time", and its answer is ordered prose
+    handed to the model so it can spot a story continuing. Same files, different
+    questions, different lifetimes.
+
+    Headlines and the description only, never the whole body: the prompt already
+    runs to about 11,000 tokens, and two full digests would add thousands more
+    to tell the model something the headlines already say.
+    """
+    try:
+        posts = load_all(posts_dir)
+    except PostError:
+        return []
+
+    past: list[PastDigest] = []
+    for post in posts:  # load_all sorts newest first.
+        if marker not in post.tags or post.date >= before:
+            continue
+        headlines = tuple(
+            headline
+            for headline in (_headline(line) for line in post.body.splitlines())
+            if headline
+        )
+        past.append(
+            PastDigest(
+                date=post.date, description=post.description, headlines=headlines
+            )
+        )
+        if len(past) == limit:
+            break
+
+    return past
+
+
 def was_seen(entry: Entry, previously: Seen) -> bool:
     """Whether *entry* is a story the blog already ran.
 

@@ -1,15 +1,15 @@
-# Configuration shared by the static site generator and the daily agent.
+# Configuration shared by the static site generator and the digest agent.
 
 [site]
 title = "IT Brief"
-tagline = "A daily digest of what happened in tech, plus notes of my own."
-description = "Daily digest of news from the IT world, curated automatically, plus posts by Oscar Juarez."
+tagline = "What mattered in tech, twice a week, plus notes of my own."
+description = "The week's IT news in two digests, curated automatically, plus posts by Oscar Juarez."
 author = "Oscar Juarez"
 # Origin of the deployed site, without a trailing slash.
 url = "https://oscarjuji.github.io"
 # Path prefix. This is a GitHub Pages *project* site, so every internal link
 # needs it. Use "" for a user site served from the root.
-base_url = "/ti-blog"
+base_url = "/it-blog"
 language = "en"
 # Decides which calendar day a digest belongs to, and how dates are displayed.
 timezone = "America/Mexico_City"
@@ -17,16 +17,28 @@ timezone = "America/Mexico_City"
 [agent]
 # Model used to write the digest. See https://ai.google.dev/gemini-api/docs/quickstart
 model = "gemini-3.6-flash"
-# Only entries published within this many hours of the run are considered. A bit
-# over 24 so that a late run never leaves a gap between two days.
-window_hours = 26
+# Only entries published within this many hours of the run are considered. The
+# digest goes out Tuesday and Friday, so the longer gap to cover is Friday to
+# Tuesday: four days, plus a few hours so a late run never leaves a hole.
+window_hours = 96
 # At most this many entries survive from a single feed...
-per_feed_limit = 6
+#
+# These two rose with the window, and had to. `rank.select` sorts by recency
+# alone, so over four days a feed's six slots would have filled with yesterday's
+# six items and nothing from days three and four would ever reach the model --
+# "best of the week" would have quietly meant "best of yesterday".
+per_feed_limit = 12
 # ...and at most this many candidates are handed to the model.
-candidate_limit = 20
-# Bounds on how many stories the digest covers.
+#
+# This one sizes the prompt directly: at 40 it measures ~94,000 characters,
+# about 23,500 tokens. Raise it and check `llm.OLLAMA_CONTEXT` still leaves room
+# for an answer on top, or the local backend goes back to reading a fragment of
+# its instructions and replying in prose. A test pins the relationship.
+candidate_limit = 40
+# Bounds on how many stories the digest covers. Fewer than the daily edition
+# carried, because each one is now several paragraphs rather than a sentence.
 min_stories = 5
-max_stories = 10
+max_stories = 7
 # The tags a digest may carry, beyond the "digest" marker every one of them has.
 # Deliberately a closed list: left to invent its own, the model coins a near
 # synonym most days, and a tag that appears once is a tag nobody can browse by.
